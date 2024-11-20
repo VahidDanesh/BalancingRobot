@@ -30,3 +30,16 @@
 *.exe
 *.out
 *.app
+
+
+
+# Get-ChildItem -Include desktop.ini -Recurse -Hidden | Remove-Item -Force
+*.ini
+desktop.ini
+
+
+.pio
+.pioenvs
+.piolibdeps
+.clang_complete
+.gcc-flags.json
