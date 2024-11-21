@@ -11,7 +11,7 @@
 #define NEOPIXEL_COUNT 1
 
 // Motor configuration
-#define MICROSTEPS 16 // Microsteps set on the driver
+#define MICROSTEPS 4 // Microsteps set on the driver
 #define STEPS_PER_REV 200 // Full steps per revolution for the stepper motor
 AccelStepper stepper(AccelStepper::DRIVER, stepPin1, dirPin1);
 
@@ -19,8 +19,9 @@ AccelStepper stepper(AccelStepper::DRIVER, stepPin1, dirPin1);
 Adafruit_NeoPixel strip(NEOPIXEL_COUNT, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
 // Motor speed and acceleration
-float rpm = 60.0;      // Desired RPM
-float acceleration = 3200.0; // Steps/sec^2
+float rpm = 150.0;      // Desired RPM
+float maxSpeed  = (rpm / 60.0) * STEPS_PER_REV * MICROSTEPS; // Steps/sec 
+float acceleration = maxSpeed * 10; // Steps/sec^2
 
 void setup() {
   // Initialize serial communication
@@ -34,7 +35,7 @@ void setup() {
   stepper.setEnablePin(enablePin1);
   stepper.setPinsInverted(false, false, true); // Invert enable pin (active LOW)
   stepper.setAcceleration(acceleration);
-  stepper.setMaxSpeed((rpm / 60.0) * STEPS_PER_REV * MICROSTEPS);
+  stepper.setMaxSpeed(maxSpeed);
 
   // Initialize built-in LED
   pinMode(BUILTIN_LED, OUTPUT);
@@ -54,7 +55,7 @@ void setLEDColor(uint8_t r, uint8_t g, uint8_t b) {
 void loop() {
   // Enable motor and run
   digitalWrite(enablePin1, LOW);
-  stepper.moveTo(2000); // Move 2000 steps forward
+  stepper.moveTo(3200*10); // Move 2000 steps forward
   while (stepper.distanceToGo() != 0) {
     stepper.run();
     int speed = stepper.speed(); // Current speed in steps/sec
