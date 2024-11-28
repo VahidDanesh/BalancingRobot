@@ -523,9 +523,16 @@ void connectToWiFi() {
 
 void startAPMode() {
   WiFi.mode(WIFI_AP);
-  WiFi.softAP(WIFI_SSID, WIFI_PASSWORD);
-
+  WiFi.softAP(AP_WIFI_SSID, AP_WIFI_PASSWORD);
+  
   Serial.println("AP mode started.");
+  Serial.println("Connect to the following WiFi network:");
+  Serial.print("SSID: ");
+  Serial.println(AP_WIFI_SSID);
+  Serial.print("Password: ");
+  Serial.println(AP_WIFI_PASSWORD);
+
+  
   Serial.print("AP IP Address: ");
   Serial.println(WiFi.softAPIP());
 }
@@ -589,13 +596,13 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
   }
 }
 
-// ----- Send Configuration Data -----
-void sendConfigurationData(uint8_t num) {
-  // Example: Send PID parameters or other configuration data to the client
-  char buffer[64];
-  sprintf(buffer, "PID Angle K: %.2f", 0.65); // Example value
-  wsServer.sendTXT(num, buffer);
-}
+// // ----- Send Configuration Data -----
+// void sendConfigurationData(uint8_t num) {
+//   // Example: Send PID parameters or other configuration data to the client
+//   char buffer[64];
+//   sprintf(buffer, "PID Angle K: %.2f", 0.65); // Example value
+//   wsServer.sendTXT(num, buffer);
+// }
 
 void parseSerial() {
   static char serialBuf[10];
@@ -840,65 +847,65 @@ void setMicroStep(uint8_t uStep) {
   // digitalWrite(motUStepPin3, uStepPow&0x04);
 }
 
-void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
+// void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
 
-    switch(type) {
-        case WStype_DISCONNECTED:
-            Serial.printf("[%u] Disconnected!\n", num);
-            break;
-        case WStype_CONNECTED: {
-                IPAddress ip = wsServer.remoteIP(num);
-                Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
-                sendConfigurationData(num);
-            }
-            break;
-        case WStype_TEXT:
-            Serial.printf("[%u] get Text: %s\n", num, payload);
-            parseCommand((char*) payload, length);
-            break;
-        case WStype_BIN: {
-            // Serial.printf("[%u] get binary length: %u\n", num, length);
+//     switch(type) {
+//         case WStype_DISCONNECTED:
+//             Serial.printf("[%u] Disconnected!\n", num);
+//             break;
+//         case WStype_CONNECTED: {
+//                 IPAddress ip = wsServer.remoteIP(num);
+//                 Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
+//                 sendConfigurationData(num);
+//             }
+//             break;
+//         case WStype_TEXT:
+//             Serial.printf("[%u] get Text: %s\n", num, payload);
+//             parseCommand((char*) payload, length);
+//             break;
+//         case WStype_BIN: {
+//             // Serial.printf("[%u] get binary length: %u\n", num, length);
 
-            // if (length==6) {
-            //   cmd c;
-            //   memcpy(c.arr, payload, 6);
-            //   Serial << "Binary: " << c.grp << "\t" << c.cmd << "\t" << c.val << "\t" << sizeof(cmd) << endl;
-            //
-            //   if (c.grp<parList::groupCounter) {
-            //     if (c.grp==0 && c.cmd<100) {
-            //       pidParList.set(c.cmd,c.val);
-            //
-            //       // pidPar[c.cmd].setFloat(c.val);
-            //     }
-            //     if (c.cmd==253) {
-            //       pidParList.sendList(&wsServer);
-            //     }
-            //     if (c.cmd==254) {
-            //       pidParList.read();
-            //     }
-            //     if (c.cmd==255) {
-            //       pidParList.write();
-            //     }
-            //   } else if (c.grp==100) {
-            //     if (c.cmd==0) {
-            //       speedInput = c.val;
-            //     } else if (c.cmd==1) {
-            //       steerInput = c.val;
-            //     }
-            //   }
-            // }
+//             // if (length==6) {
+//             //   cmd c;
+//             //   memcpy(c.arr, payload, 6);
+//             //   Serial << "Binary: " << c.grp << "\t" << c.cmd << "\t" << c.val << "\t" << sizeof(cmd) << endl;
+//             //
+//             //   if (c.grp<parList::groupCounter) {
+//             //     if (c.grp==0 && c.cmd<100) {
+//             //       pidParList.set(c.cmd,c.val);
+//             //
+//             //       // pidPar[c.cmd].setFloat(c.val);
+//             //     }
+//             //     if (c.cmd==253) {
+//             //       pidParList.sendList(&wsServer);
+//             //     }
+//             //     if (c.cmd==254) {
+//             //       pidParList.read();
+//             //     }
+//             //     if (c.cmd==255) {
+//             //       pidParList.write();
+//             //     }
+//             //   } else if (c.grp==100) {
+//             //     if (c.cmd==0) {
+//             //       speedInput = c.val;
+//             //     } else if (c.cmd==1) {
+//             //       steerInput = c.val;
+//             //     }
+//             //   }
+//             // }
 
-            break;
-          }
-		case WStype_ERROR:
-		case WStype_FRAGMENT_TEXT_START:
-		case WStype_FRAGMENT_BIN_START:
-		case WStype_FRAGMENT:
-		case WStype_FRAGMENT_FIN:
-			break;
-    }
+//             break;
+//           }
+// 		case WStype_ERROR:
+// 		case WStype_FRAGMENT_TEXT_START:
+// 		case WStype_FRAGMENT_BIN_START:
+// 		case WStype_FRAGMENT:
+// 		case WStype_FRAGMENT_FIN:
+// 			break;
+//     }
 
-}
+// }
 
 void sendConfigurationData(uint8_t num) {
   // send message to client
