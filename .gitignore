@@ -34,7 +34,6 @@
 
 
 # Get-ChildItem -Include desktop.ini -Recurse -Hidden | Remove-Item -Force
-*.ini
 desktop.ini
 
 
@@ -43,3 +42,6 @@ desktop.ini
 .piolibdeps
 .clang_complete
 .gcc-flags.json
+.vscode
+
+Samples
