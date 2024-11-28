@@ -32,7 +32,7 @@ Also, you have to publish all modifications.
 #include <fastStepper.h>
 // #include <par.h>
 #include <Preferences.h>  // for storing settings
-#include "config.h"       // Include the configuration file
+#include "config.h"       // Include the configuration file
 
 
 // ----- Input method
@@ -72,6 +72,11 @@ struct {
 #define FORMAT_SPIFFS_IF_FAILED true
 
 // ----- Function prototypes
+void connectToWiFi();
+void startAPMode();
+void printWebServerInstructions();
+void handleSPIFFS();
+void handleWiFiError();
 void sendWifiList(void);
 void parseSerial();
 void parseCommand(char* data, uint8_t length);
@@ -87,8 +92,8 @@ void IRAM_ATTR motRightTimerFunction();
 
 // ----- Definitions and variables
 // -- Web server
-const char* http_username = "admin";
-const char* http_password = "admin";
+const char* http_username = HTTP_USERNAME;
+const char* http_password = HTTP_PASSWORD;
 AsyncWebServer httpServer(80);
 WebSocketsServer wsServer = WebSocketsServer(81);
 
@@ -252,189 +257,57 @@ void rxFalling() {  // will be called when the ppm peak is over
 
 // ----- Main code
 void setup() {
-
   Serial.begin(115200);
-  #ifdef INPUT_IBUS
-  IBus.begin(Serial2);
-  #endif
-  preferences.begin("settings", false);  // false = RW-mode
-  // preferences.clear();  // Remove all preferences under the opened namespace
+  Serial.println("\nStarting Balancing Robot...");
 
-  pinMode(motEnablePin, OUTPUT);
-  // pinMode(motUStepPin1, OUTPUT);
-  // pinMode(motUStepPin2, OUTPUT);
-  // pinMode(motUStepPin3, OUTPUT);
-  digitalWrite(motEnablePin, disableMot ^ activeLOW); // Disable steppers during startup
-  setMicroStep(microStep);
+  // Initialize SPIFFS
+  handleSPIFFS();
 
-  pinMode(ledPin, OUTPUT);
-  digitalWrite(ledPin, 0);
+  // Initialize WiFi
+  connectToWiFi();
 
+  // Initialize motors
+  pinMode(MOT_ENABLE_PIN, OUTPUT);
+  digitalWrite(MOT_ENABLE_PIN, disableMot ^ activeLOW); // Disable motors during startup
   motLeft.init();
   motRight.init();
-  motLeft.microStep = microStep;
-  motRight.microStep = microStep;
 
-  // SPIFFS setup
-  if(!SPIFFS.begin(FORMAT_SPIFFS_IF_FAILED)){
-    Serial.println("SPIFFS mount failed");
-    return;
-  } else {
-    Serial.println("SPIFFS mount success");
-  }
-
-  // Gyro setup
-  delay(200);
-  Wire.begin(21,22,400000UL);
-  delay(200);
-  Serial.println("MPU6050 connection test");
-  Serial.println(imu.testConnection());
-
-
+  // Initialize IMU
+  Serial.println("Initializing MPU6050...");
+  Wire.begin(21, 22, 400000UL);
   imu.initialize();
-  imu.setFullScaleGyroRange(MPU6050_GYRO_FS_500);
-  // Calculate and store gyro offsets
-  delay(50);
-
-  // Init EEPROM, if not done before
-  #define PREF_VERSION 1  // if setting structure has been changed, count this number up to delete all settings
-  if (preferences.getUInt("pref_version", 0) != PREF_VERSION) {
-    preferences.clear();  // Remove all preferences under the opened namespace
-    preferences.putUInt("pref_version", PREF_VERSION);
-    Serial << "EEPROM init complete, all preferences deleted, new pref_version: " << PREF_VERSION << "\n";
-  }
-
-  // Read gyro offsets
-  Serial << "Gyro calibration values: ";
-  for (uint8_t i=0; i<3; i++) {
-    char buf[16];
-    sprintf(buf, "gyro_offset_%u", i);
-    gyroOffset[i] = preferences.getShort(buf, 0);
-    Serial << gyroOffset[i] << "\t";
-  }
-  Serial << endl;
-
-  // Read angle offset
-  angleOffset = preferences.getFloat("angle_offset", 0.0);
-
-  // Perform initial gyro measurements
-  initSensor(50);
-
-  // Connect to Wifi and setup OTA if known Wifi network cannot be found
-  boolean wifiConnected = 0;
-  if (preferences.getUInt("wifi_mode", 0)==1) {
-    char ssid[63];
-    char key[63];
-    preferences.getBytes("wifi_ssid", ssid, 63);
-    preferences.getBytes("wifi_key", key, 63);
-    Serial << "Connecting to '" << ssid << "'" << endl;
-    // Serial << "Connecting to '" << ssid << "', '" << key << "'" << endl;
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(ssid, key);
-    if (!(WiFi.waitForConnectResult() != WL_CONNECTED)) {
-      Serial.print("Connected to WiFi with IP address: ");
-      Serial.println(WiFi.localIP());
-      wifiConnected = 1;
-    } else {
-      Serial.println("Could not connect to known WiFi network");
-    }
-  }
-  if (!wifiConnected) {
-    Serial.println("Starting AP...");
-    WiFi.mode(WIFI_AP_STA);
-    // WiFi.softAPConfig(apIP, apIP, IPAddress(192,168,178,24));
-    WiFi.softAP("balancingRobot", "turboturbo");
-    Serial.print("AP started with IP address: ");
-    Serial.println(WiFi.softAPIP());
-  }
-
-  ArduinoOTA.setHostname(host);
-  ArduinoOTA
-  .onStart([]() {
-    String type;
-    if (ArduinoOTA.getCommand() == U_FLASH)
-      type = "sketch";
-    else // U_SPIFFS
-      type = "filesystem";
-    Serial.println("Start updating " + type);
-  })
-  .onEnd([]() {
-    Serial.println("\nEnd");
-  })
-  .onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progress: %u%%\r\n", (progress / (total / 100)));
-  })
-  .onError([](ota_error_t error) {
-    Serial.printf("Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-    else if (error == OTA_END_ERROR) Serial.println("End Failed");
-  });
-
-  ArduinoOTA.begin();
-
-  // Start DNS server
-  if (MDNS.begin(host)) {
-    Serial.print("MDNS responder started, name: ");
-    Serial.println(host);
+  if (imu.testConnection()) {
+    Serial.println("MPU6050 connection successful!");
   } else {
-    Serial.println("Could not start MDNS responder");
+    Serial.println("MPU6050 connection failed! Check wiring.");
   }
 
-  httpServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-    Serial.println("Loading index.htm");
+  // Initialize Web Server
+  httpServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    Serial.println("Serving index.htm...");
     request->send(SPIFFS, "/index.htm");
   });
 
   httpServer.serveStatic("/", SPIFFS, "/");
-  httpServer.onNotFound([](AsyncWebServerRequest *request){
-      request->send(404, "text/plain", "FileNotFound");
+  httpServer.onNotFound([](AsyncWebServerRequest *request) {
+    request->send(404, "text/plain", "File Not Found");
   });
 
-  httpServer.addHandler(new SPIFFSEditor(SPIFFS,http_username,http_password));
+  httpServer.addHandler(new SPIFFSEditor(SPIFFS, HTTP_USERNAME, HTTP_PASSWORD));
   httpServer.begin();
 
   wsServer.begin();
   wsServer.onEvent(webSocketEvent);
 
-  MDNS.addService("http", "tcp", 80);
-  MDNS.addService("ws", "tcp", 81);
+  Serial.println("Web server started.");
+  printWebServerInstructions();
 
-  // Make some funny sounds
-  // for (uint8_t i=0; i<150; i++) {
-  //   motRight.speed = 500 + i*10;
-  //   updateStepper(&motRight);
-  //   delay(5);
-  // }
+  // Initialize OTA
+  ArduinoOTA.setHostname(HOSTNAME);
+  ArduinoOTA.begin();
+  Serial.println("OTA updates enabled.");
 
-  dacWrite(motorCurrentPin, motorCurrent);
-
-  pidAngle.setParameters(0.65,0,0.075,15);
-  pidPos.setParameters(1,0,1.2,20);
-  pidSpeed.setParameters(6,5,0,20);
-
-  // pidParList.read();
-
-  // PPM
-  #ifdef INPUT_PPM
-  pinMode(PPM_PIN, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(PPM_PIN), rxFalling, FALLING);
-  #endif
-
-  // Run wireless related tasks on core 0
-  // xTaskCreatePinnedToCore(
-  //                   wirelessTask,   /* Function to implement the task */
-  //                   "wirelessTask", /* Name of the task */
-  //                   10000,      /* Stack size in words */
-  //                   NULL,       /* Task input parameter */
-  //                   0,          /* Priority of the task */
-  //                   NULL,       /* Task handle. */
-  //                   0);  /* Core where the task should run */
-
-  Serial.println("Ready");
-
+  Serial.println("Setup complete. Robot is ready.");
 }
 
 float steerInput, speedInput;
@@ -661,6 +534,106 @@ void loop() {
   }
 
   // delay(1);
+}
+
+// ----- WiFi Connection -----
+void connectToWiFi() {
+  Serial.println("Connecting to WiFi...");
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+  unsigned long startAttemptTime = millis();
+  const unsigned long timeout = 10000; // 10 seconds timeout
+
+  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < timeout) {
+    Serial.print(".");
+    delay(500);
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nWiFi connected!");
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println("\nWiFi connection failed. Starting AP mode...");
+    startAPMode();
+  }
+}
+
+void startAPMode() {
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP(WIFI_SSID, WIFI_PASSWORD);
+
+  Serial.println("AP mode started.");
+  Serial.print("AP IP Address: ");
+  Serial.println(WiFi.softAPIP());
+}
+
+// ----- SPIFFS Handling -----
+void handleSPIFFS() {
+  if (!SPIFFS.begin(FORMAT_SPIFFS_IF_FAILED)) {
+    Serial.println("SPIFFS mount failed! Check file system.");
+    while (true); // Halt execution
+  } else {
+    Serial.println("SPIFFS mounted successfully.");
+  }
+}
+
+// ----- Web Server Instructions -----
+void printWebServerInstructions() {
+  Serial.println("\n--- Web Server Instructions ---");
+  Serial.println("1. Open a web browser.");
+  Serial.println("2. Enter the following URL:");
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.print("   http://");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.print("   http://");
+    Serial.println(WiFi.softAPIP());
+  }
+  Serial.println("3. Access the index.htm file to configure the robot.");
+  Serial.println("4. Use the web interface to monitor and control the robot.");
+  Serial.println("--------------------------------");
+}
+
+// ----- Error Handling -----
+void handleWiFiError() {
+  Serial.println("Error: Unable to connect to WiFi.");
+  Serial.println("Check your WiFi credentials in config.h.");
+  Serial.println("Restarting in AP mode...");
+  startAPMode();
+}
+
+// ----- WebSocket Event Handling -----
+void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
+  switch (type) {
+    case WStype_DISCONNECTED:
+      Serial.printf("[%u] Disconnected!\n", num);
+      break;
+    case WStype_CONNECTED: {
+      IPAddress ip = wsServer.remoteIP(num);
+      Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
+      sendConfigurationData(num);
+      break;
+    }
+    case WStype_TEXT:
+      Serial.printf("[%u] Received Text: %s\n", num, payload);
+      parseCommand((char*) payload, length);
+      break;
+    case WStype_BIN:
+      Serial.printf("[%u] Received Binary Data (length: %u)\n", num, length);
+      break;
+    default:
+      break;
+  }
+}
+
+// ----- Send Configuration Data -----
+void sendConfigurationData(uint8_t num) {
+  // Example: Send PID parameters or other configuration data to the client
+  char buffer[64];
+  sprintf(buffer, "PID Angle K: %.2f", 0.65); // Example value
+  wsServer.sendTXT(num, buffer);
 }
 
 void parseSerial() {
