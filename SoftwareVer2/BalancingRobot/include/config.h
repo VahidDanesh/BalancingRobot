@@ -20,8 +20,16 @@
 #define MPU_SCL_PIN 22
 #define MPU_INT_PIN 23  // Choose an interrupt-capable pin
 #define MPU_AD0_PIN -1  // AD0 pin is high (0x69) or low (0x68)
-#define MPU_I2C_CLOCK 400000  // 400kHz I2C clock speed
+#define MPU_I2C_CLOCK 100000  // Reduced to 100kHz for stability
+#define MPU_I2C_ADDR 0x68     // MPU6050 I2C address
 
+// I2C Communication settings
+#define I2C_TIMEOUT_MS 50     // I2C timeout in milliseconds
+#define I2C_RETRY_COUNT 3     // Number of retries for I2C operations
+
+// Debug options
+#define SERIAL_DEBUG true
+#define SERIAL_BAUD 115200
 
 // Built-in LED
 #define LED_PIN 2

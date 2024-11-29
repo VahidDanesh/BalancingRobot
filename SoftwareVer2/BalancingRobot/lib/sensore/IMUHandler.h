@@ -59,7 +59,11 @@ private:
     // Helper functions
     void calculateAngles();
     void applyCalibration();
-
     void setupInterrupt();
     void configureRegisters();
+    void resetI2C();
+    bool configureMPU();
+    bool initializeMPU();
+    bool writeRegister(uint8_t reg, uint8_t value);
+    bool readRegisters(uint8_t reg, uint8_t* data, uint8_t length);
 };

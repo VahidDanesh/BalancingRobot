@@ -23,9 +23,9 @@ void loop() {
     if (imu.dataReady()) {
         imu.update();
 
-        // Print data every 100ms
+        // Print data every 1000ms
         static unsigned long lastPrint = 0;
-        if (millis() - lastPrint >= 100) {
+        if (millis() - lastPrint >= 1000) {
             imu.printData();
             lastPrint = millis();
         }
