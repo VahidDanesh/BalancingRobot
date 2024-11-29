@@ -1,6 +1,24 @@
 #include "IMUHandler.h"
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+#include <Wire.h>
+#include "config.h"
+
 
 volatile bool IMUHandler::newDataAvailable = false;
+
+// Constructor implementation (if not already in the header)
+IMUHandler::IMUHandler() : 
+    gyroX(0), gyroY(0), gyroZ(0),
+    accelX(0), accelY(0), accelZ(0),
+    pitch(0), roll(0),
+    previousTime(0),
+    gyroXoffset(0), gyroYoffset(0), gyroZoffset(0),
+    accelXoffset(0), accelYoffset(0), accelZoffset(0),
+    calibrated(false) {
+}
+
+
 
 void IRAM_ATTR IMUHandler::handleInterrupt() {
     newDataAvailable = true;
