@@ -6,6 +6,11 @@
 const char* WIFI_SSID = "GalaxyS23";       // Replace with your WiFi SSID
 const char* WIFI_PASSWORD = "123456789S23"; // Replace with your WiFi password
 
+const char* AP_WIFI_SSID = "BalancingRobot"; // AP Mode SSID
+const char* AP_WIFI_PASSWORD = "12345678"; // AP Mode Password
+
+
+
 // HTTP Server Credentials
 const char* HTTP_USERNAME = "admin";
 const char* HTTP_PASSWORD = "admin";
