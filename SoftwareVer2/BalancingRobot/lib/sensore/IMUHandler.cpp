@@ -100,12 +100,6 @@ void IMUHandler::calibrate() {
     Serial.println("Offsets saved to EEPROM.");
 
     
-
-
-
-
-
-
     // Read initial yaw, pitch, and roll to calculate offsets
     if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) {
         mpu.dmpGetQuaternion(&q, fifoBuffer);
