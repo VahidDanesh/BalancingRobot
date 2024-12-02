@@ -1,42 +1,34 @@
-// IMUHandler.h
-#pragma once
+#ifndef IMUHANDLER_H
+#define IMUHANDLER_H
 
-#include <Adafruit_MPU6050.h>
-#include <Adafruit_Sensor.h>
-#include <Wire.h>
+#include "MPU6050_6Axis_MotionApps20.h"
+#include <config.h>
 
 class IMUHandler {
 public:
-    IMUHandler();
-    bool begin();
-    void update();
+    static IMUHandler& getInstance(); // Singleton instance
+    void initialize();
     void calibrate();
-
-    // Getters
-    float getPitch() const { return pitch; }
-    float getRoll() const { return roll; }
-
-    // Debug
-    void printData();
+    void update();
+    float getYaw() const;
+    float getPitch() const;
+    float getRoll() const;
+    static void dmpDataReady();
 
 private:
-    Adafruit_MPU6050 mpu;
-
-    // Filtered angles
-    float pitch;
-    float roll;
-
-    // Offsets
-    float pitchOffset;
-    float rollOffset;
-    float gyroXoffset;
-    float gyroYoffset;
-
-    // Previous time for complementary filter
-    unsigned long previousTime;
-
-    // Filter constants
-    static constexpr float ALPHA = 0.996f;
-    static constexpr float ZERO_THRESHOLD = 0.1f; // Threshold for considering angle as zero
-    static constexpr int CALIBRATION_SAMPLES = 500; // Increased number of samples
+    IMUHandler(); 
+    MPU6050 mpu;
+    Quaternion q;           // Quaternion container
+    VectorFloat gravity;    // Gravity vector
+    float ypr[3];           // Yaw, Pitch, Roll angles
+    uint8_t fifoBuffer[64]; // FIFO storage buffer
+    uint16_t packetSize;    // Expected DMP packet size
+    uint8_t devStatus;      // Device status
+    uint8_t mpuIntStatus;   // holds actual interrupt status byte from MPU
+    volatile bool mpuInterrupt = false;     // indicates whether MPU interrupt pin has gone high
+    bool dmpReady;          // DMP initialization status
+    bool calibrated;        // Calibration status
+    float yawOffset, pitchOffset, rollOffset; // Calibration offsets
 };
+
+#endif // IMUHANDLER_H

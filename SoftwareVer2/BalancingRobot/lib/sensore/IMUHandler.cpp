@@ -1,107 +1,163 @@
-// IMUHandler.cpp
 #include "IMUHandler.h"
+#include "config.h"
+#include <Wire.h>
+#include <Arduino.h>
 
-IMUHandler::IMUHandler() : 
-    pitch(0), roll(0),
-    pitchOffset(0), rollOffset(0),
-    gyroXoffset(0), gyroYoffset(0),
-    previousTime(0) {
+// Singleton instance
+IMUHandler& IMUHandler::getInstance() {
+    static IMUHandler instance;
+    return instance;
 }
 
-bool IMUHandler::begin() {
-    if (!mpu.begin()) {
-        Serial.println("Failed to find MPU6050 chip");
-        return false;
+// Free function for interrupt handling
+void IMUHandler::dmpDataReady() {
+    IMUHandler::getInstance().mpuInterrupt = true;
+}
+
+IMUHandler::IMUHandler() 
+    : mpu(MPU_AD0_ADDR),
+      dmpReady(false), 
+      calibrated(false), 
+      yawOffset(0), 
+      pitchOffset(0), 
+      rollOffset(0),
+      mpuIntStatus(false) {}
+
+void IMUHandler::initialize() {
+    Wire.begin(MPU_SDA_PIN, MPU_SCL_PIN, MPU_I2C_CLOCK);
+    Wire.setClock(MPU_I2C_CLOCK); // Set I2C clock to 400kHz for faster communication
+
+    Serial.println(F("Initializing I2C devices..."));
+    mpu.initialize();
+    pinMode(MPU_INT_PIN, INPUT);
+
+    Serial.println(F("Testing device connections..."));
+
+    if (!mpu.testConnection()) {
+        Serial.println("MPU6050 connection failed!");
+        while (1); // Halt execution if the sensor is not connected
     }
 
-    mpu.setAccelerometerRange(MPU6050_RANGE_2_G);  // Changed to 2G for better resolution
-    mpu.setGyroRange(MPU6050_RANGE_250_DEG);       // Changed to 250 deg/s
-    mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+    Serial.println("MPU6050 connection successful.");
 
-    previousTime = micros();
-    return true;
-}
+    // Initialize DMP
+    devStatus = mpu.dmpInitialize();
 
-void IMUHandler::update() {
-    sensors_event_t a, g, temp;
-    mpu.getEvent(&a, &g, &temp);
+    if (devStatus == 0) {
+        // Enable DMP
+        Serial.println("Enabling DMP...");
+        mpu.setDMPEnabled(true);
 
-    float dt = (micros() - previousTime) / 1000000.0f;
-    previousTime = micros();
+        // Enable interrupt detection
+        Serial.print("Enabling interrupt detection on pin ");
+        Serial.println(MPU_INT_PIN);
+        attachInterrupt(digitalPinToInterrupt(MPU_INT_PIN), IMUHandler::dmpDataReady, RISING);
 
-    // Calculate accelerometer angles
-    float accelPitch = atan2(a.acceleration.y, sqrt(a.acceleration.x * a.acceleration.x + 
-                            a.acceleration.z * a.acceleration.z)) * RAD_TO_DEG;
-    float accelRoll = atan2(-a.acceleration.x, a.acceleration.z) * RAD_TO_DEG;
-
-    // Apply gyro offsets
-    float gyroX = g.gyro.x - gyroXoffset;
-    float gyroY = g.gyro.y - gyroYoffset;
-
-    // Integrate gyroscope data
-    float gyroPitch = pitch + gyroX * dt;
-    float gyroRoll = roll + gyroY * dt;
-
-    // Complementary filter
-    pitch = (ALPHA * gyroPitch + (1.0f - ALPHA) * accelPitch) - pitchOffset;
-    roll = (ALPHA * gyroRoll + (1.0f - ALPHA) * accelRoll) - rollOffset;
-
-    // Apply zero threshold
-    if (abs(pitch) < ZERO_THRESHOLD) pitch = 0;
-    if (abs(roll) < ZERO_THRESHOLD) roll = 0;
+        // Get expected DMP packet size
+        packetSize = mpu.dmpGetFIFOPacketSize();
+        dmpReady = true;
+        Serial.println("DMP ready! Waiting for first interrupt...");
+    } else {
+        // ERROR!
+        // 1 = initial memory load failed
+        // 2 = DMP configuration updates failed
+        // (if it's going to break, usually the code will be 1)
+        Serial.print("DMP Initialization failed (code ");
+        Serial.print(devStatus);
+        Serial.println(")");
+    }
 }
 
 void IMUHandler::calibrate() {
-    Serial.println("Calibrating MPU6050...");
-    Serial.println("Keep the sensor still and level!");
-    delay(2000); // Give time to place the sensor
-
-    float sumPitch = 0;
-    float sumRoll = 0;
-    float sumGyroX = 0;
-    float sumGyroY = 0;
-
-    // Collect samples
-    for (int i = 0; i < CALIBRATION_SAMPLES; i++) {
-        sensors_event_t a, g, temp;
-        mpu.getEvent(&a, &g, &temp);
-
-        // Calculate accelerometer angles
-        float accelPitch = atan2(a.acceleration.y, sqrt(a.acceleration.x * a.acceleration.x + 
-                                a.acceleration.z * a.acceleration.z)) * RAD_TO_DEG;
-        float accelRoll = atan2(-a.acceleration.x, a.acceleration.z) * RAD_TO_DEG;
-
-        sumPitch += accelPitch;
-        sumRoll += accelRoll;
-        sumGyroX += g.gyro.x;
-        sumGyroY += g.gyro.y;
-
-        if (i % 100 == 0) {
-            Serial.print("Calibrating... ");
-            Serial.print(i * 100 / CALIBRATION_SAMPLES);
-            Serial.println("%");
-        }
-        delay(5);
+    if (!dmpReady) {
+        Serial.println("Error: DMP not initialized. Call initialize() first.");
+        return;
     }
 
-    // Calculate offsets
-    pitchOffset = sumPitch / CALIBRATION_SAMPLES;
-    rollOffset = sumRoll / CALIBRATION_SAMPLES;
-    gyroXoffset = sumGyroX / CALIBRATION_SAMPLES;
-    gyroYoffset = sumGyroY / CALIBRATION_SAMPLES;
+    Serial.println("Starting calibration...");
+    Serial.println("Please hold the sensor still and level.");
 
-    // Reset angles
-    pitch = 0;
-    roll = 0;
+    delay(3150); // Give the user time to stabilize the sensor
 
-    Serial.println("Calibration complete!");
-    Serial.print("Pitch offset: "); Serial.println(pitchOffset);
-    Serial.print("Roll offset: "); Serial.println(rollOffset);
-    Serial.print("Gyro X offset: "); Serial.println(gyroXoffset);
-    Serial.print("Gyro Y offset: "); Serial.println(gyroYoffset);
+    // Calibrate accelerometer and gyroscope
+    mpu.CalibrateAccel(6);
+    mpu.CalibrateGyro(6);
+    mpu.PrintActiveOffsets();
+
+    delay(3150);
+
+
+    // Save offsets
+
+    mpu.setXAccelOffset(mpu.getXAccelOffset());
+    mpu.setYAccelOffset(mpu.getYAccelOffset());
+    mpu.setZAccelOffset(mpu.getZAccelOffset());
+    mpu.setXGyroOffset(mpu.getXGyroOffset());
+    mpu.setYGyroOffset(mpu.getYGyroOffset());
+    mpu.setZGyroOffset(mpu.getZGyroOffset());
+
+    // print prompt to serial monitor
+    Serial.println("Offsets saved to EEPROM.");
+
+    
+
+
+
+
+
+
+    // Read initial yaw, pitch, and roll to calculate offsets
+    if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) {
+        mpu.dmpGetQuaternion(&q, fifoBuffer);
+        mpu.dmpGetGravity(&gravity, &q);
+        mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+
+        yawOffset = ypr[0];
+        pitchOffset = ypr[1];
+        rollOffset = ypr[2];
+    }
+
+    calibrated = true;
+    Serial.println("Calibration complete.");
 }
 
-void IMUHandler::printData() {
-    Serial.print("Pitch: "); Serial.print(pitch, 3); // Increased decimal precision
-    Serial.print(" Roll: "); Serial.println(roll, 3);
+void IMUHandler::update() {
+    if (!dmpReady) {
+        Serial.println("Error: DMP not initialized. Call initialize() first.");
+        return;
+    }
+
+    if (!calibrated) {
+        Serial.println("Error: Sensor not calibrated. Call calibrate() first.");
+        return;
+    }
+
+    // Check if interrupt flag is set
+    if (mpuInterrupt) {
+        mpuInterrupt = false; // Clear the interrupt flag
+
+        // Read a packet from the FIFO
+        if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) {
+            mpu.dmpGetQuaternion(&q, fifoBuffer);
+            mpu.dmpGetGravity(&gravity, &q);
+            mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+
+            // Subtract offsets to get calibrated angles
+            ypr[0] -= yawOffset;  // Yaw
+            ypr[1] -= pitchOffset; // Pitch
+            ypr[2] -= rollOffset;  // Roll
+        }
+    }
+}
+
+float IMUHandler::getYaw() const {
+    return ypr[0] * 180.0 / M_PI; // Convert to degrees
+}
+
+float IMUHandler::getPitch() const {
+    return ypr[1] * 180.0 / M_PI; // Convert to degrees
+}
+
+float IMUHandler::getRoll() const {
+    return ypr[2] * 180.0 / M_PI; // Convert to degrees
 }
