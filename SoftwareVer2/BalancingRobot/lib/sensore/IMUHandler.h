@@ -36,7 +36,7 @@ private:
     unsigned long previousTime;
 
     // Filter constants
-    static constexpr float ALPHA = 0.96f;
-    static constexpr float ZERO_THRESHOLD = 0.05f; // Threshold for considering angle as zero
+    static constexpr float ALPHA = 0.996f;
+    static constexpr float ZERO_THRESHOLD = 0.1f; // Threshold for considering angle as zero
     static constexpr int CALIBRATION_SAMPLES = 500; // Increased number of samples
 };
