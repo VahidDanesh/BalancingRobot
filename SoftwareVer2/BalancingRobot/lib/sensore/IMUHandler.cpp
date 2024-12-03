@@ -68,7 +68,7 @@ void IMUHandler::initialize() {
     }
 }
 
-void IMUHandler::calibrate() {
+void IMUHandler::calibrate(bool force) {
     if (!dmpReady) {
         Serial.println("Error: DMP not initialized. Call initialize() first.");
         return;
@@ -79,6 +79,7 @@ void IMUHandler::calibrate() {
 
     delay(3150); // Give the user time to stabilize the sensor
 
+    if (force) {
     // Calibrate accelerometer and gyroscope
     mpu.CalibrateAccel(6);
     mpu.CalibrateGyro(6);
@@ -95,9 +96,20 @@ void IMUHandler::calibrate() {
     mpu.setXGyroOffset(mpu.getXGyroOffset());
     mpu.setYGyroOffset(mpu.getYGyroOffset());
     mpu.setZGyroOffset(mpu.getZGyroOffset());
+    } else {
+        // use the calibration offset from PID calibration
+        // see https://github.com/jrowberg/i2cdevlib/blob/master/Arduino/MPU6050/examples/IMU_Zero/IMU_Zero.ino
+        
+        mpu.setXAccelOffset(-2321);
+        mpu.setYAccelOffset(309);
+        mpu.setZAccelOffset(1047);
+        mpu.setXGyroOffset(169);
+        mpu.setYGyroOffset(-3);
+        mpu.setZGyroOffset(-1);
+    }
 
     // print prompt to serial monitor
-    Serial.println("Offsets saved to EEPROM.");
+    Serial.println(force ? "Offsets are set." : "Offsets are set. Using PID calibration offsets.");
 
     
     // Read initial yaw, pitch, and roll to calculate offsets
@@ -145,13 +157,13 @@ void IMUHandler::update() {
 }
 
 float IMUHandler::getYaw() const {
-    return ypr[0] * 180.0 / M_PI; // Convert to degrees
+    return ypr[0] * RAD_TO_DEG; // Convert to degrees
 }
 
 float IMUHandler::getPitch() const {
-    return ypr[1] * 180.0 / M_PI; // Convert to degrees
+    return ypr[1] * RAD_TO_DEG; // Convert to degrees
 }
 
 float IMUHandler::getRoll() const {
-    return ypr[2] * 180.0 / M_PI; // Convert to degrees
+    return ypr[2] * RAD_TO_DEG; // Convert to degrees
 }

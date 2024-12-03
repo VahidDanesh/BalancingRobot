@@ -17,15 +17,17 @@ void loop() {
     float pitch = imu.getPitch();
     float roll = imu.getRoll();
 
-    // print the angles with same char length for better readability
-    Serial.print("Yaw:   ");
-    Serial.print(yaw, 2);
-    Serial.print("   ");
-    Serial.print("Pitch: ");
-    Serial.print(pitch, 2);
-    Serial.print("   ");
-    Serial.print("Roll:  ");
-    Serial.println(roll, 2);
+    
+    // use same length for all values
+    Serial.print("YAW: ");
+    Serial.print(yaw, 4);
+    Serial.print("  ");
+    Serial.print("PITCH: ");
+    Serial.print(pitch, 4);
+    Serial.print("  ");
+    Serial.print("ROLL: ");
+    Serial.println(roll, 4);
+    
 
 
     delay(100); // Update every 100ms

@@ -8,7 +8,7 @@ class IMUHandler {
 public:
     static IMUHandler& getInstance(); // Singleton instance
     void initialize();
-    void calibrate();
+    void calibrate(bool force=false);
     void update();
     float getYaw() const;
     float getPitch() const;

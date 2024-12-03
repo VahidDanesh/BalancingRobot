@@ -3,6 +3,7 @@
 // System Configuration
 #define SYSTEM_TICK_RATE_HZ 100
 #define DEBUG_ENABLED true
+#define US_DELAY 3150 // Microseconds delay for 200Hz sampling rate
 
 // Pin Definitions
 // Motor 1
