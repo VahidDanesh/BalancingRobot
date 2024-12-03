@@ -152,6 +152,10 @@ void IMUHandler::update() {
             ypr[0] -= yawOffset;  // Yaw
             ypr[1] -= pitchOffset; // Pitch
             ypr[2] -= rollOffset;  // Roll
+            // assume zero if less than 1 degree
+            if (abs(ypr[0]) < 1 * DEG_TO_RAD) ypr[0] = 0;
+            if (abs(ypr[1]) < 1 * DEG_TO_RAD) ypr[1] = 0;
+            if (abs(ypr[2]) < 1 * DEG_TO_RAD) ypr[2] = 0;
         }
     }
 }
