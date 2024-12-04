@@ -1,52 +1,96 @@
+#include <Arduino.h>
+#include <Wire.h>
+#include "config.h"
 #include "IMUHandler.h"
-#include <config.h>
+#include <PID_v1.h>
+#include <FastAccelStepper.h>
 
+// IMU
 IMUHandler& imu = IMUHandler::getInstance();
 
+// PID variables
+double input = 0, output = 0, setpoint = 0;
+double kp = 2.0, ki = 5.0, kd = 1.0;
+PID pid(&input, &output, &setpoint, kp, ki, kd, DIRECT);
 
-void printAlignedValue(const char* label, float value, int width);
-
+// Stepper motor controllers
+FastAccelStepperEngine engine = FastAccelStepperEngine();
+FastAccelStepper* motor1 = nullptr;
+FastAccelStepper* motor2 = nullptr;
 
 void setup() {
-    Serial.begin(SERIAL_BAUD);
-    
+    Serial.begin(115200);
+
+    // Initialize IMU
+    Serial.println("Initializing IMU...");
     imu.initialize();
-    imu.calibrate(true);
+    imu.calibrate();
+
+    // Initialize FastAccelStepper
+    Serial.println("Initializing motors...");
+    engine.init();
+
+    // Motor 1 setup
+    motor1 = engine.stepperConnectToPin(MOTOR1_STEP_PIN);
+    if (motor1) {
+        motor1->setDirectionPin(MOTOR1_DIR_PIN);
+        motor1->setEnablePin(MOTOR1_ENABLE_PIN);
+        motor1->setAutoEnable(true);
+        motor1->setSpeedInHz(1000); // Default speed
+        motor1->setAcceleration(1000); // Default acceleration
+    } else {
+        Serial.println("Failed to initialize Motor 1!");
+    }
+
+    // Motor 2 setup
+    motor2 = engine.stepperConnectToPin(MOTOR2_STEP_PIN);
+    if (motor2) {
+        motor2->setDirectionPin(MOTOR2_DIR_PIN);
+        motor2->setEnablePin(MOTOR2_ENABLE_PIN);
+        motor2->setAutoEnable(true);
+        motor2->setSpeedInHz(1000); // Default speed
+        motor2->setAcceleration(1000); // Default acceleration
+    } else {
+        Serial.println("Failed to initialize Motor 2!");
+    }
+
+    // Set PID output limits
+    pid.SetOutputLimits(-400, 400); // Limit to motor speed range
+    pid.SetMode(AUTOMATIC);         // Enable the PID controller
+
+    Serial.println("Setup complete!");
 }
 
 void loop() {
+    // Update IMU
     imu.update();
 
-    float yaw = imu.getYaw();
-    float pitch = imu.getPitch();
-    float roll = imu.getRoll();
+    // Get pitch angle from IMU
+    input = imu.getPitch();
 
-    
-    // Print formatted values
-    printAlignedValue("YAW: ", yaw, 8);    // 8 characters wide
-    printAlignedValue("PITCH: ", pitch, 8); // 8 characters wide
-    printAlignedValue("ROLL: ", roll, 8);   // 8 characters wide
-    Serial.println();
+    // Compute PID output
+    pid.Compute();
 
+    // Map PID output to motor speeds
+    float motor1Speed = output;
+    float motor2Speed = -output;
 
-
-    delay(100); // Update every 100ms
-}
-
-
-
-
-
-void printAlignedValue(const char* label, float value, int width) {
-    Serial.print(label);
-    if (value >= 0) {
-        Serial.print(" "); // Add a space for positive values to align with negative ones
+    // Set motor speeds and directions
+    if (motor1) {
+        motor1->setSpeedInHz(abs(motor1Speed));
+        motor1->setDirection(motor1Speed > 0);
     }
-    // Print the value with fixed width
-    Serial.print(value, 2); 
-    int valueLength = String(value, 2).length();
-    // Add extra spaces to pad the output if it's shorter than the width
-    for (int i = valueLength; i < width; i++) {
-        Serial.print(" ");
+
+    if (motor2) {
+        motor2->setSpeedInHz(abs(motor2Speed));
+        motor2->setDirection(motor2Speed > 0);
     }
+
+    // Debugging
+    Serial.print("Pitch: ");
+    Serial.print(input);
+    Serial.print(" Output: ");
+    Serial.println(output);
+
+    delay(10); // Run at 100Hz
 }
