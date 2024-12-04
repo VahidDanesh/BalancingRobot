@@ -27,7 +27,7 @@ PID::PID(float* Input, float* Output, float* Setpoint,
 
     PID::SetOutputLimits(0, 255);				//default output limit corresponds to
 												//the arduino pwm limits
-
+                                    
     SampleTime = 100;							//default Controller Sample Time is 0.1 seconds
 
     PID::SetControllerDirection(ControllerDirection);
@@ -153,18 +153,8 @@ void PID::SetSampleTime(int NewSampleTime)
  **************************************************************************/
 void PID::SetOutputLimits(float Min, float Max)
 {
+
    if(Min >= Max) return;
-
-   
-   Serial.println("SetOutputLimits");
-   outMin = Min;
-   outMax = Max;
-
-   Serial.print("outMin: ");
-   Serial.println(outMin);
-   Serial.print("outMax: ");
-   Serial.println(outMax);
-
 
    if(inAuto)
    {

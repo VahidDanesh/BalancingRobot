@@ -32,7 +32,7 @@ IMUHandler& imu = IMUHandler::getInstance();
 
 void printAlignedValue(const char* label, float value, int width);
 void processSerialCommands();
-uint32_t calculateStepFrequency(float rpm);
+float calculateStepFrequency(float rpm);
 
 void setup() {
     Serial.begin(115200);
@@ -140,7 +140,7 @@ void printAlignedValue(const char* label, float value, int width) {
 }
 
 // Function to calculate step frequency based on RPM
-uint32_t calculateStepFrequency(float rpm) {
+float calculateStepFrequency(float rpm) {
     return (rpm * STEPS_PER_REV * MICROSTEPPING) / 60.0;
 }
 
