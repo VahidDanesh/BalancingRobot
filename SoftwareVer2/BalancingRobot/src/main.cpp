@@ -71,8 +71,8 @@ void setup() {
     // Initialize PID controllers
     pid1.SetMode(AUTOMATIC);
     pid2.SetMode(AUTOMATIC);
-    pid1.SetOutputLimits(-calculateStepFrequency(MAX_SPEED_RPM), calculateStepFrequency(MAX_SPEED_RPM));
-    pid2.SetOutputLimits(-calculateStepFrequency(MAX_SPEED_RPM), calculateStepFrequency(MAX_SPEED_RPM));
+    pid1.SetOutputLimits(-MAX_SPEED_RPM, MAX_SPEED_RPM);
+    pid2.SetOutputLimits(-MAX_SPEED_RPM, MAX_SPEED_RPM);
 
     Serial.println("System Initialized. Use Serial to adjust PID parameters:");
     Serial.println("  Kp[value] (e.g., Kp2.5)");
@@ -121,6 +121,15 @@ void loop() {
     Serial.print(output1);
     Serial.print(", Output2: ");
     Serial.println(output2);
+
+    Serial.print("Kp: ");
+    Serial.print(pid1.GetKp());
+    Serial.print(", Ki: ");
+    Serial.print(pid1.GetKi());
+    Serial.print(", Kd: ");
+    Serial.println(pid1.GetKd());
+
+    
 
     delay(100); // Loop frequency (adjust as needed for real-time performance)
 }
