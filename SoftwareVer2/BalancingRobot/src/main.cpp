@@ -13,7 +13,7 @@
 #define ACCELERATION 2000      // Steps per second^2
 
 // PID tuning parameters
-float Kp = 2.0, Ki = 5.0, Kd = 1.0;
+float Kp = 2.0, Ki = 0.0, Kd = 0.0;
 
 // PID variables for each motor
 float input = 0, output1 = 0, output2 = 0, setpoint = 0; // Setpoint is the desired tilt angle (e.g., 0°)

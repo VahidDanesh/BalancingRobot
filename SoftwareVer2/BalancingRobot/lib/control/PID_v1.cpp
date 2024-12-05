@@ -156,6 +156,9 @@ void PID::SetOutputLimits(float Min, float Max)
 
    if(Min >= Max) return;
 
+   outMin = Min;
+   outMax = Max;
+
    if(inAuto)
    {
 	   if(*myOutput > outMax) *myOutput = outMax;
