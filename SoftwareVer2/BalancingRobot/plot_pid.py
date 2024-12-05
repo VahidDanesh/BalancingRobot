@@ -5,7 +5,7 @@ import threading
 import time
 
 # Serial port configuration
-SERIAL_PORT = "COM6"  # Replace with your serial port (e.g., COM3, /dev/ttyUSB0)
+SERIAL_PORT = "/dev/ttyUSB0"  # Replace with your serial port (e.g., COM3, /dev/ttyUSB0)
 BAUD_RATE = 115200
 
 # Data storage
@@ -24,7 +24,7 @@ def send_command():
     while True:
         command = input("Enter command (e.g., Kp2.5, Ki0.5, Kd1.0, setpoint0.0): ")
         ser.write((command + "\n").encode("utf-8"))
-        time.sleep(0.1)  # Small delay to avoid overwhelming the serial port
+        time.sleep(0.5)  # Small delay to avoid overwhelming the serial port
 
 # Start a thread for sending commands
 command_thread = threading.Thread(target=send_command)
