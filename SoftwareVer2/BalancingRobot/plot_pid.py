@@ -1,176 +1,80 @@
 import serial
-import time
 import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
 from collections import deque
 import threading
-import tkinter as tk
-from tkinter import ttk
-import json
+import time
 
-class PIDPlotter:
-    def __init__(self, port='COM3', baudrate=115200, max_points=100):
-        # Serial communication
-        self.serial_port = serial.Serial(port, baudrate)
-        time.sleep(2)  # Wait for Arduino to reset
+# Serial port configuration
+SERIAL_PORT = "/dev/ttyUSB0"  # Replace with your serial port (e.g., COM3, /dev/ttyUSB0)
+BAUD_RATE = 115200
 
-        # Data storage
-        self.max_points = max_points
-        self.times = deque(maxlen=max_points)
-        self.inputs = deque(maxlen=max_points)
-        self.outputs1 = deque(maxlen=max_points)
-        self.outputs2 = deque(maxlen=max_points)
-        self.setpoints = deque(maxlen=max_points)
+# Data storage
+max_points = 100
+input_data = deque([0] * max_points, maxlen=max_points)
+output1_data = deque([0] * max_points, maxlen=max_points)
+output2_data = deque([0] * max_points, maxlen=max_points)
+time_data = deque([0] * max_points, maxlen=max_points)
 
-        # Plotting setup
-        self.fig, self.ax = plt.subplots(figsize=(10, 6))
-        self.lines = {
-            'input': self.ax.plot([], [], 'b-', label='Input (Angle)')[0],
-            'output1': self.ax.plot([], [], 'r-', label='Output1')[0],
-            'output2': self.ax.plot([], [], 'g-', label='Output2')[0],
-            'setpoint': self.ax.plot([], [], 'k--', label='Setpoint')[0]
-        }
+# Initialize serial connection
+ser = serial.Serial(SERIAL_PORT, BAUD_RATE)
+time.sleep(2)  # Wait for the connection to establish
 
-        # Plot configuration
-        self.ax.set_ylim(-45, 45)
-        self.ax.set_xlim(0, 30)
-        self.ax.grid(True)
-        self.ax.legend()
-        self.ax.set_title('PID Controller Response')
-        self.ax.set_xlabel('Time (s)')
-        self.ax.set_ylabel('Angle (degrees) / Output')
+# Function to send commands to the Arduino
+def send_command():
+    while True:
+        command = input("Enter command (e.g., Kp2.5, Ki0.5, Kd1.0, setpoint0.0): ")
+        ser.write((command + "\n").encode("utf-8"))
+        time.sleep(0.5)  # Small delay to avoid overwhelming the serial port
 
-        # Start time
-        self.start_time = time.time()
+# Start a thread for sending commands
+command_thread = threading.Thread(target=send_command)
+command_thread.daemon = True
+command_thread.start()
 
-        # Create control window
-        self.create_control_window()
+# Initialize plot
+plt.ion()
+fig, ax = plt.subplots()
+input_line, = ax.plot([], [], label="Input (Pitch)")
+output1_line, = ax.plot([], [], label="Output1 (Motor1)")
+output2_line, = ax.plot([], [], label="Output2 (Motor2)")
+ax.set_xlim(0, max_points)
+ax.set_ylim(-100, 100)  # Adjust based on your system's range
+ax.legend()
+ax.set_title("PID Controller Tuning")
+ax.set_xlabel("Time")
+ax.set_ylabel("Value")
 
-        # Animation
-        self.ani = FuncAnimation(
-            self.fig, self.update_plot, interval=50,
-            blit=True, cache_frame_data=False
-        )
+try:
+    start_time = time.time()
+    while True:
+        # Read data from serial
+        line = ser.readline().decode("utf-8").strip()
+        if "Input:" in line and "Output1:" in line and "Output2:" in line:
+            # Parse the data
+            parts = line.split(", ")
+            input_value = float(parts[0].split(": ")[1])
+            output1_value = float(parts[1].split(": ")[1])
+            output2_value = float(parts[2].split(": ")[1])
 
-    def create_control_window(self):
-        self.control_window = tk.Tk()
-        self.control_window.title("PID Controller Parameters")
+            # Update data
+            current_time = time.time() - start_time
+            time_data.append(current_time)
+            input_data.append(input_value)
+            output1_data.append(output1_value)
+            output2_data.append(output2_value)
 
-        # PID Parameters
-        parameters = [
-            ("Kp", "Kp"),
-            ("Ki", "Ki"),
-            ("Kd", "Kd"),
-            ("Setpoint", "setpoint")
-        ]
+            # Update plot
+            input_line.set_data(range(len(input_data)), input_data)
+            output1_line.set_data(range(len(output1_data)), output1_data)
+            output2_line.set_data(range(len(output2_data)), output2_data)
+            ax.set_xlim(0, len(input_data))
+            ax.set_ylim(min(min(input_data), min(output1_data), min(output2_data)) - 10,
+                        max(max(input_data), max(output1_data), max(output2_data)) + 10)
+            plt.pause(0.01)
 
-        for param, cmd in parameters:
-            frame = ttk.Frame(self.control_window)
-            frame.pack(padx=5, pady=5, fill="x")
-
-            ttk.Label(frame, text=f"{param}:").pack(side="left")
-            entry = ttk.Entry(frame, width=10)
-            entry.pack(side="left", padx=5)
-
-            ttk.Button(
-                frame, 
-                text=f"Update {param}",
-                command=lambda c=cmd, e=entry: self.send_command(c, e.get())
-            ).pack(side="left")
-
-        # Save/Load buttons
-        ttk.Button(
-            self.control_window,
-            text="Save Parameters",
-            command=self.save_parameters
-        ).pack(pady=5)
-
-        ttk.Button(
-            self.control_window,
-            text="Load Parameters",
-            command=self.load_parameters
-        ).pack(pady=5)
-
-    def send_command(self, command, value):
-        try:
-            value = float(value)
-            command_str = f"{command}{value}\n"
-            self.serial_port.write(command_str.encode())
-        except ValueError:
-            print(f"Invalid value for {command}")
-
-    def save_parameters(self):
-        params = {
-            "Kp": float(self.control_window.children['!frame'].children['!entry'].get()),
-            "Ki": float(self.control_window.children['!frame2'].children['!entry'].get()),
-            "Kd": float(self.control_window.children['!frame3'].children['!entry'].get()),
-            "setpoint": float(self.control_window.children['!frame4'].children['!entry'].get())
-        }
-
-        with open('pid_parameters.json', 'w') as f:
-            json.dump(params, f)
-
-    def load_parameters(self):
-        try:
-            with open('pid_parameters.json', 'r') as f:
-                params = json.load(f)
-
-            for param, value in params.items():
-                self.send_command(param, str(value))
-
-        except FileNotFoundError:
-            print("No saved parameters found")
-
-    def update_plot(self, frame):
-        # Read serial data
-        if self.serial_port.in_waiting:
-            try:
-                line = self.serial_port.readline().decode().strip()
-                # Parse the data
-                data = {}
-                for item in line.split(','):
-                    key, value = item.split(':')
-                    data[key.strip()] = float(value.strip())
-
-                # Update data
-                current_time = time.time() - self.start_time
-                self.times.append(current_time)
-                self.inputs.append(data['Input'])
-                self.outputs1.append(data['Output1'])
-                self.outputs2.append(data['Output2'])
-                self.setpoints.append(0)  # or whatever your setpoint is
-
-            except (ValueError, KeyError) as e:
-                print(f"Error parsing data: {e}")
-                return self.lines.values()
-
-        # Update plot data
-        for line, data in zip(
-            self.lines.values(),
-            [self.inputs, self.outputs1, self.outputs2, self.setpoints]
-        ):
-            line.set_data(list(self.times), list(data))
-
-        # Adjust plot limits if necessary
-        if self.times:
-            self.ax.set_xlim(max(0, self.times[-1] - 30), self.times[-1] + 2)
-
-        return self.lines.values()
-
-    def run(self):
-        plt.show()
-
-    def cleanup(self):
-        self.serial_port.close()
-        plt.close()
-
-if __name__ == "__main__":
-    # Create and run plotter
-    plotter = PIDPlotter(port='COM3')  # Change COM port as needed
-    try:
-        plotter.run()
-    finally:
-        plotter.cleanup()
-
-# Created/Modified files during execution:
-# - pid_parameters.json (when saving parameters)
+except KeyboardInterrupt:
+    print("Exiting...")
+finally:
+    ser.close()
+    plt.ioff()
+    plt.show()
