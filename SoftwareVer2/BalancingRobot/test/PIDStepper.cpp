@@ -6,18 +6,17 @@
 
 // Microstepping configuration (adjust based on your motor driver setting)
 #define STEPS_PER_REV 200      // Full steps per revolution (typically 200 for 1.8° motors)
-#define MICROSTEPPING 2        // Microstepping setting (e.g., 16, 32, etc.)
+#define MICROSTEPPING 8        // Microstepping setting (e.g., 16, 32, etc.)
 
 // Speed and acceleration
-#define MAX_SPEED_RPM 100     // Maximum speed in RPM
-#define ACCELERATION 8*200*100      // Steps per second^2
+#define MAX_SPEED_RPM 200      // Maximum speed in RPM
+#define ACCELERATION 2000      // Steps per second^2
 
 // PID tuning parameters
 float Kp = 2.0, Ki = 0.0, Kd = 0.0;
 
 // PID variables for each motor
 float input = 0, output1 = 0, output2 = 0, setpoint = 0; // Setpoint is the desired tilt angle (e.g., 0°)
-uint32_t stepFrequency;
 
 // PID instances for each motor
 PID pid1(&input, &output1, &setpoint, Kp, Ki, Kd, 1, DIRECT);
@@ -33,10 +32,7 @@ IMUHandler& imu = IMUHandler::getInstance();
 
 void printAlignedValue(const char* label, float value, int width);
 void processSerialCommands();
-uint32_t calculateStepFrequency(uint32_t rpm);
-
-
-
+float calculateStepFrequency(float rpm);
 
 void setup() {
     Serial.begin(115200);
@@ -85,8 +81,6 @@ void setup() {
     Serial.println("  setpoint[value] (e.g., setpoint0.0)");
 }
 
-
-
 void loop() {
     // Process Serial commands
     processSerialCommands();
@@ -98,30 +92,26 @@ void loop() {
     pid1.Compute();
     pid2.Compute();
 
-    uint32_t speedInRPM = abs(output1);
-
-    stepper1->setSpeedInHz(calculateStepFrequency(speedInRPM));
-    stepper2->setSpeedInHz(calculateStepFrequency(speedInRPM));
     // Control Motor 1
-    if (output1 > 1) {
+    if (output1 > 0) {
         stepper1->runForward();
-        
-    } else if (output1 < -1) {
+        stepper1->setSpeedInHz(calculateStepFrequency(output1));
+    } else if (output1 < 0) {
         stepper1->runBackward();
-        
+        stepper1->setSpeedInHz(-calculateStepFrequency(output1));
     } else {
-        stepper1->setSpeedInHz(0);
+        stepper1->stopMove();
     }
 
     // Control Motor 2
-    if (output2 > 1) {
+    if (output2 > 0) {
         stepper2->runForward();
-        
-    } else if (output2 < -1) {
+        stepper2->setSpeedInHz(calculateStepFrequency(output2));
+    } else if (output2 < 0) {
         stepper2->runBackward();
-        
+        stepper2->setSpeedInHz(-calculateStepFrequency(output2));
     } else {
-        stepper2->setSpeedInHz(0);
+        stepper2->stopMove();
     }
 
     // Print data for plotting
@@ -144,7 +134,6 @@ void loop() {
     delay(100); // Loop frequency (adjust as needed for real-time performance)
 }
 
-
 void printAlignedValue(const char* label, float value, int width) {
     Serial.print(label);
     if (value >= 0) {
@@ -160,8 +149,8 @@ void printAlignedValue(const char* label, float value, int width) {
 }
 
 // Function to calculate step frequency based on RPM
-uint32_t calculateStepFrequency(uint32_t rpm) {
-    return (rpm * STEPS_PER_REV * MICROSTEPPING) / 60.0 * 16;
+float calculateStepFrequency(float rpm) {
+    return (rpm * STEPS_PER_REV * MICROSTEPPING) / 60.0;
 }
 
 // Function to process Serial commands for PID tuning

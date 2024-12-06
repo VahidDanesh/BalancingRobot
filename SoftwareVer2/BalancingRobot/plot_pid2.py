@@ -69,7 +69,7 @@ class PIDPlotter:
         }
 
         # Configure plot
-        self.ax.set_ylim(-45, 45)
+        self.ax.set_ylim(-100, 100)
         self.ax.set_xlim(0, 30)
         self.ax.grid(True)
         self.ax.legend()
@@ -195,11 +195,11 @@ class PIDPlotter:
                 print(f"Error updating plot: {e}")
 
         # Schedule next update
-        self.root.after(50, self.update_plot)
+        self.root.after(10, self.update_plot)
 
     def run(self):
         # Start plot updates
-        self.root.after(50, self.update_plot)
+        self.root.after(10, self.update_plot)
         # Start main loop
         self.root.mainloop()
 
@@ -209,7 +209,7 @@ class PIDPlotter:
 
 if __name__ == "__main__":
     # Create and run plotter
-    plotter = PIDPlotter(port='/dev/ttyUSB0')  # Change COM port as needed
+    plotter = PIDPlotter(port='COM6')  # Change COM port as needed
     try:
         plotter.run()
     finally:

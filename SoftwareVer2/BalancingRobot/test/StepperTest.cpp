@@ -41,109 +41,41 @@ uint32_t calculateStepFrequency(uint32_t rpm);
 void setup() {
     Serial.begin(115200);
 
-    // Initialize IMU
-    imu.initialize();
-    imu.calibrate(true);
+    // Initialize the stepper engine  
+    engine.init();  
 
-    // Initialize stepper engine
-    engine.init();
-
-    // Configure Motor 1
-    stepper1 = engine.stepperConnectToPin(MOTOR1_STEP_PIN);
-    if (!stepper1) {
-        Serial.println("Motor 1 connection failed!");
-        while (1);
-    }
-    stepper1->setDirectionPin(MOTOR1_DIR_PIN);
-    stepper1->setEnablePin(MOTOR1_ENABLE_PIN);
-    stepper1->setAutoEnable(true);
-    stepper1->setSpeedInHz(calculateStepFrequency(MAX_SPEED_RPM));
-    stepper1->setAcceleration(ACCELERATION);
-
-    // Configure Motor 2
-    stepper2 = engine.stepperConnectToPin(MOTOR2_STEP_PIN);
-    if (!stepper2) {
-        Serial.println("Motor 2 connection failed!");
-        while (1);
-    }
-    stepper2->setDirectionPin(MOTOR2_DIR_PIN);
-    stepper2->setEnablePin(MOTOR2_ENABLE_PIN);
-    stepper2->setAutoEnable(true);
-    stepper2->setSpeedInHz(calculateStepFrequency(MAX_SPEED_RPM));
-    stepper2->setAcceleration(ACCELERATION);
-
-    // Initialize PID controllers
-    pid1.SetMode(AUTOMATIC);
-    pid2.SetMode(AUTOMATIC);
-    pid1.SetOutputLimits(-MAX_SPEED_RPM, MAX_SPEED_RPM);
-    pid2.SetOutputLimits(-MAX_SPEED_RPM, MAX_SPEED_RPM);
-
-    Serial.println("System Initialized. Use Serial to adjust PID parameters:");
-    Serial.println("  Kp[value] (e.g., Kp2.5)");
-    Serial.println("  Ki[value] (e.g., Ki0.5)");
-    Serial.println("  Kd[value] (e.g., Kd1.0)");
-    Serial.println("  setpoint[value] (e.g., setpoint0.0)");
-}
+    // Attach the stepper motor to the engine  
+    stepper1 = engine.stepperConnectToPin(MOTOR1_STEP_PIN);  
+    if (stepper1) {  
+        // Configure the stepper motor  
+        stepper1->setDirectionPin(MOTOR1_DIR_PIN);  
+        stepper1->setEnablePin(MOTOR1_ENABLE_PIN, true); // Enable pin is active low  
+        stepper1->setAutoEnable(true);                  // Automatically enable/disable motor  
+        stepper1->setAcceleration(ACCELERATION);        // Set acceleration  
+    } else {  
+        Serial.println("Failed to initialize stepper motor!");  
+        while (1); // Halt execution if stepper initialization fails  
+    }  
+}  
 
 
 
-void loop() {
-    // Process Serial commands
-    processSerialCommands();
+void loop() {  
+    if (stepper1) {  
+        // Calculate step frequency for the desired speed  
+        stepFrequency = calculateStepFrequency(MAX_SPEED_RPM);  // Calculate step frequency for the desired speed
 
-    imu.update();
-    input = imu.getPitch();
 
-    // Update PID for both motors
-    pid1.Compute();
-    pid2.Compute();
+        // Run the motor in one direction for 5 seconds  
+        stepper1->setSpeedInHz(stepFrequency); // Set speed in Hz  
+        stepper1->runForward();                // Run forward  
+        delay(2*5000);                           // Wait for 5 seconds  
 
-    uint32_t speedInRPM = abs(output1);
-
-    stepper1->setSpeedInHz(calculateStepFrequency(speedInRPM));
-    stepper2->setSpeedInHz(calculateStepFrequency(speedInRPM));
-    // Control Motor 1
-    if (output1 > 1) {
-        stepper1->runForward();
-        
-    } else if (output1 < -1) {
-        stepper1->runBackward();
-        
-    } else {
-        stepper1->setSpeedInHz(0);
-    }
-
-    // Control Motor 2
-    if (output2 > 1) {
-        stepper2->runForward();
-        
-    } else if (output2 < -1) {
-        stepper2->runBackward();
-        
-    } else {
-        stepper2->setSpeedInHz(0);
-    }
-
-    // Print data for plotting
-    Serial.print("Input: ");
-    Serial.print(input);
-    Serial.print(", Output1: ");
-    Serial.print(output1);
-    Serial.print(", Output2: ");
-    Serial.println(output2);
-
-    Serial.print("Kp: ");
-    Serial.print(pid1.GetKp());
-    Serial.print(", Ki: ");
-    Serial.print(pid1.GetKi());
-    Serial.print(", Kd: ");
-    Serial.println(pid1.GetKd());
-
-    
-
-    delay(100); // Loop frequency (adjust as needed for real-time performance)
-}
-
+        // Change direction and run for another 5 seconds  
+        stepper1->runBackward();               // Run backward  
+        delay(2*5000);                           // Wait for 5 seconds  
+    }  
+}  
 
 void printAlignedValue(const char* label, float value, int width) {
     Serial.print(label);

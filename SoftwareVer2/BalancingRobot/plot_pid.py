@@ -5,7 +5,7 @@ import threading
 import time
 
 # Serial port configuration
-SERIAL_PORT = "/dev/ttyUSB0"  # Replace with your serial port (e.g., COM3, /dev/ttyUSB0)
+SERIAL_PORT = "COM6"  # Replace with your serial port (e.g., COM3, /dev/ttyUSB0)
 BAUD_RATE = 115200
 
 # Data storage
