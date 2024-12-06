@@ -12,8 +12,8 @@
 #define MOTOR1_ENABLE_PIN 27
 
 // Motor 2
-#define MOTOR2_STEP_PIN 26
-#define MOTOR2_DIR_PIN 27
+#define MOTOR2_STEP_PIN 25
+#define MOTOR2_DIR_PIN 26
 #define MOTOR2_ENABLE_PIN 14
 
 // MPU6050 Pins

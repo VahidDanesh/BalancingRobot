@@ -103,26 +103,22 @@ void loop() {
     stepper1->setSpeedInHz(calculateStepFrequency(speedInRPM));
     stepper2->setSpeedInHz(calculateStepFrequency(speedInRPM));
     // Control Motor 1
-    if (output1 > 1) {
+    // the motor is disabled when the output > 0! I don't know why!
+    if (output1 > 0) {
         stepper1->runForward();
         
-    } else if (output1 < -1) {
-        stepper1->runBackward();
-        
     } else {
-        stepper1->setSpeedInHz(0);
-    }
+        stepper1->runBackward();
+    }    
+
 
     // Control Motor 2
-    if (output2 > 1) {
+    if (output2 > 0) {
         stepper2->runForward();
         
-    } else if (output2 < -1) {
-        stepper2->runBackward();
-        
     } else {
-        stepper2->setSpeedInHz(0);
-    }
+        stepper2->runBackward();
+    } 
 
     // Print data for plotting
     Serial.print("Input: ");
