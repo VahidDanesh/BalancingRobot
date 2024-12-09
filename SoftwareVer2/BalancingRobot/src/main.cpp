@@ -1,200 +1,258 @@
-#include <Arduino.h>
-#include <FastAccelStepper.h>
-#include <PID_v1.h>
-#include "config.h"
-#include "IMUHandler.h"
+#include <Arduino.h>  
+#include <FastAccelStepper.h>  
+#include <PID_v1.h>  
+#include <WiFi.h>  
+#include <WebServer.h>  
+#include <SPIFFS.h>  
+#include "config.h"  
+#include "IMUHandler.h"  
 
-// Microstepping configuration (adjust based on your motor driver setting)
-#define STEPS_PER_REV 200      // Full steps per revolution (typically 200 for 1.8° motors)
-#define MICROSTEPPING 32        // Microstepping setting (e.g., 16, 32, etc.)
+// Microstepping configuration  
+#define STEPS_PER_REV 200  
+#define MICROSTEPPING 32  
 
-// Speed and acceleration
-#define MAX_SPEED_RPM 100     // Maximum speed in RPM
-#define ACCELERATION 8*200*100      // Steps per second^2
+// Speed and acceleration  
+#define MAX_SPEED_RPM 100  
+#define ACCELERATION 8 * 200 * 100  
 
-// PID tuning parameters
-float Kp = 5.0, Ki = 1.0, Kd = 0.5;
+// Safety limits  
+#define MAX_TILT_ANGLE 30.0f  
+#define EMERGENCY_STOP_ANGLE 60.0f  
 
-// PID variables for each motor
-float input = 0, output1 = 0, output2 = 0, setpoint = 0; // Setpoint is the desired tilt angle (e.g., 0°)
-uint32_t stepFrequency;
+// Control modes  
+#define PID_ANGLE 0  
+#define PID_POS 1  
+#define PID_SPEED 2  
 
-// PID instances for each motor
-PID pid1(&input, &output1, &setpoint, Kp, Ki, Kd, 1, REVERSE);
-PID pid2(&input, &output2, &setpoint, Kp, Ki, Kd, 1, REVERSE);
+uint8_t controlMode = PID_POS; // Default to angle+position control  
 
-// Stepper instances
-FastAccelStepperEngine engine;
-FastAccelStepper* stepper1 = nullptr;
-FastAccelStepper* stepper2 = nullptr;
+// PID tuning parameters  
+float Kp_angle = 5.0, Ki_angle = 1.0, Kd_angle = 0.5;  
+float Kp_pos = 2.0, Ki_pos = 0.5, Kd_pos = 0.1;  
+float Kp_speed = 3.0, Ki_speed = 0.8, Kd_speed = 0.2;  
 
-// Get IMU pitch angle
-IMUHandler& imu = IMUHandler::getInstance();
+// PID variables  
+float input_angle = 0, output_angle = 0, setpoint_angle = 0;  
+float input_pos = 0, output_pos = 0, setpoint_pos = 0;  
+float input_speed = 0, output_speed = 0, setpoint_speed = 0;  
 
-void printAlignedValue(const char* label, float value, int width);
-void processSerialCommands();
-uint32_t calculateStepFrequency(uint32_t rpm);
+// PID instances  
+PID pid_angle(&input_angle, &output_angle, &setpoint_angle, Kp_angle, Ki_angle, Kd_angle, DIRECT);  
+PID pid_pos(&input_pos, &output_pos, &setpoint_pos, Kp_pos, Ki_pos, Kd_pos, DIRECT);  
+PID pid_speed(&input_speed, &output_speed, &setpoint_speed, Kp_speed, Ki_speed, Kd_speed, DIRECT);  
 
+// Stepper instances  
+FastAccelStepperEngine engine;  
+FastAccelStepper* stepper1 = nullptr;  
+FastAccelStepper* stepper2 = nullptr;  
 
+// IMU instance  
+IMUHandler& imu = IMUHandler::getInstance();  
 
+// WiFi and Web Server  
+WebServer server(WEB_SERVER_PORT);  
 
-void setup() {
-    Serial.begin(115200);
+// Function declarations  
+void setupWiFi();  
+void setupWebServer();  
+void handleWebRequests();  
+void processSerialCommands();  
+uint32_t calculateStepFrequency(uint32_t rpm);  
+void updateControlMode();  
 
-    // Initialize IMU
-    imu.initialize();
-    imu.calibrate(true);
+void setup() {  
+    Serial.begin(115200);  
 
-    // Initialize stepper engine
-    engine.init();
+    // Initialize SPIFFS  
+    if (!SPIFFS.begin(true)) {  
+        Serial.println("Failed to mount SPIFFS!");  
+        while (1);  
+    }  
 
-    // Configure Motor 1
-    stepper1 = engine.stepperConnectToPin(MOTOR1_STEP_PIN);
-    if (!stepper1) {
-        Serial.println("Motor 1 connection failed!");
-        while (1);
-    }
-    stepper1->setDirectionPin(MOTOR1_DIR_PIN);
-    stepper1->setEnablePin(MOTOR1_ENABLE_PIN);
-    stepper1->setAutoEnable(true);
-    stepper1->setSpeedInHz(0);
-    stepper1->setAcceleration(ACCELERATION);
+    // Initialize IMU  
+    imu.initialize();  
+    imu.calibrate(true);  
 
-    // Configure Motor 2
-    stepper2 = engine.stepperConnectToPin(MOTOR2_STEP_PIN);
-    if (!stepper2) {
-        Serial.println("Motor 2 connection failed!");
-        while (1);
-    }
-    stepper2->setDirectionPin(MOTOR2_DIR_PIN);
-    stepper2->setEnablePin(MOTOR2_ENABLE_PIN);
-    stepper2->setAutoEnable(true);
-    stepper2->setSpeedInHz(0);
-    stepper2->setAcceleration(ACCELERATION);
+    // Initialize stepper engine  
+    engine.init();  
 
-    // Initialize PID controllers
-    pid1.SetMode(AUTOMATIC);
-    pid2.SetMode(AUTOMATIC);
-    pid1.SetOutputLimits(-MAX_SPEED_RPM, MAX_SPEED_RPM);
-    pid2.SetOutputLimits(-MAX_SPEED_RPM, MAX_SPEED_RPM);
+    // Configure Motor 1  
+    stepper1 = engine.stepperConnectToPin(MOTOR1_STEP_PIN);  
+    if (!stepper1) {  
+        Serial.println("Motor 1 connection failed!");  
+        while (1);  
+    }  
+    stepper1->setDirectionPin(MOTOR1_DIR_PIN);  
+    stepper1->setEnablePin(MOTOR1_ENABLE_PIN);  
+    stepper1->setAutoEnable(true);  
+    stepper1->setSpeedInHz(0);  
+    stepper1->setAcceleration(ACCELERATION);  
 
-    Serial.println("System Initialized. Use Serial to adjust PID parameters:");
-    Serial.println("  Kp[value] (e.g., Kp2.5)");
-    Serial.println("  Ki[value] (e.g., Ki0.5)");
-    Serial.println("  Kd[value] (e.g., Kd1.0)");
-    Serial.println("  setpoint[value] (e.g., setpoint0.0)");
-}
+    // Configure Motor 2  
+    stepper2 = engine.stepperConnectToPin(MOTOR2_STEP_PIN);  
+    if (!stepper2) {  
+        Serial.println("Motor 2 connection failed!");  
+        while (1);  
+    }  
+    stepper2->setDirectionPin(MOTOR2_DIR_PIN);  
+    stepper2->setEnablePin(MOTOR2_ENABLE_PIN);  
+    stepper2->setAutoEnable(true);  
+    stepper2->setSpeedInHz(0);  
+    stepper2->setAcceleration(ACCELERATION);  
 
+    // Initialize PID controllers  
+    pid_angle.SetMode(AUTOMATIC);  
+    pid_pos.SetMode(AUTOMATIC);  
+    pid_speed.SetMode(AUTOMATIC);  
 
+    pid_angle.SetOutputLimits(-MAX_SPEED_RPM, MAX_SPEED_RPM);  
+    pid_pos.SetOutputLimits(-MAX_TILT_ANGLE, MAX_TILT_ANGLE);  
+    pid_speed.SetOutputLimits(-MAX_TILT_ANGLE, MAX_TILT_ANGLE);  
 
-void loop() {
-    // Process Serial commands
-    processSerialCommands();
+    // Setup WiFi and Web Server  
+    setupWiFi();  
+    setupWebServer();  
 
-    imu.update();
-    input = imu.getRoll();
+    Serial.println("System Initialized. Use Serial or Web Interface to adjust parameters.");  
+}  
 
-    // Update PID for both motors
-    pid1.Compute();
-    pid2.Compute();
+void loop() {  
+    // Process Serial commands  
+    processSerialCommands();  
 
-    uint32_t speedInRPM = abs(output1);
+    // Handle web requests  
+    server.handleClient();  
 
-    stepper1->setSpeedInHz(calculateStepFrequency(speedInRPM));
-    stepper2->setSpeedInHz(calculateStepFrequency(speedInRPM));
-    // Control Motor 1
-    // the motor is disabled when the output > 0! I don't know why!
-    if (output1 > 0) {
-        stepper1->runForward();
-        
-    } else {
-        stepper1->runBackward();
-    }    
+    // Update IMU data  
+    imu.update();  
+    input_angle = imu.getRoll();  
 
+    // Emergency stop if tilt angle exceeds safety limits  
+    if (abs(input_angle) > EMERGENCY_STOP_ANGLE) {  
+        stepper1->setSpeedInHz(0);  
+        stepper2->setSpeedInHz(0);  
+        Serial.println("Emergency Stop: Tilt angle exceeded safety limits!");  
+        return;  
+    }  
 
-    // Control Motor 2
-    if (output2 < 0) {
-        stepper2->runForward();
-        
-    } else {
-        stepper2->runBackward();
-    } 
+    // Update control mode  
+    updateControlMode();  
 
-    // Print data for plotting
-    Serial.print("Input: ");
-    Serial.print(input);
-    Serial.print(", Output1: ");
-    Serial.print(output1);
-    Serial.print(", Output2: ");
-    Serial.println(output2);
+    // Print data for debugging  
+    Serial.print("Control Mode: ");  
+    Serial.print(controlMode);  
+    Serial.print(", Input Angle: ");  
+    Serial.print(input_angle);  
+    Serial.print(", Output Angle: ");  
+    Serial.println(output_angle);  
 
-    Serial.print("Kp: ");
-    Serial.print(pid1.GetKp());
-    Serial.print(", Ki: ");
-    Serial.print(pid1.GetKi());
-    Serial.print(", Kd: ");
-    Serial.println(pid1.GetKd());
+    delay(10); // Adjust loop frequency as needed  
+}  
 
-    
+void updateControlMode() {  
+    switch (controlMode) {  
+        case PID_ANGLE:  
+            // Angle-only control  
+            pid_angle.Compute();  
+            stepper1->setSpeedInHz(calculateStepFrequency(abs(output_angle)));  
+            stepper2->setSpeedInHz(calculateStepFrequency(abs(output_angle)));  
+            break;  
 
-    delay(100); // Loop frequency (adjust as needed for real-time performance)
-}
+        case PID_POS:  
+            // Position control  
+            pid_pos.Compute();  
+            setpoint_angle = output_pos; // Position controller sets tilt angle  
+            pid_angle.Compute();  
+            stepper1->setSpeedInHz(calculateStepFrequency(abs(output_angle)));  
+            stepper2->setSpeedInHz(calculateStepFrequency(abs(output_angle)));  
+            break;  
 
+        case PID_SPEED:  
+            // Speed control  
+            pid_speed.Compute();  
+            setpoint_angle = output_speed; // Speed controller sets tilt angle  
+            pid_angle.Compute();  
+            stepper1->setSpeedInHz(calculateStepFrequency(abs(output_angle)));  
+            stepper2->setSpeedInHz(calculateStepFrequency(abs(output_angle)));  
+            break;  
+    }  
+}  
 
-void printAlignedValue(const char* label, float value, int width) {
-    Serial.print(label);
-    if (value >= 0) {
-        Serial.print(" "); // Add a space for positive values to align with negative ones
-    }
-    // Print the value with fixed width
-    Serial.print(value, 2); 
-    int valueLength = String(value, 2).length();
-    // Add extra spaces to pad the output if it's shorter than the width
-    for (int i = valueLength; i < width; i++) {
-        Serial.print(" ");
-    }
-}
+uint32_t calculateStepFrequency(uint32_t rpm) {  
+    return (rpm * STEPS_PER_REV * MICROSTEPPING) / 60.0;  
+}  
 
-// Function to calculate step frequency based on RPM
-uint32_t calculateStepFrequency(uint32_t rpm) {
-    return (rpm * STEPS_PER_REV * MICROSTEPPING) / 60.0;
-}
+void processSerialCommands() {  
+    if (Serial.available() > 0) {  
+        String command = Serial.readStringUntil('\n');  
+        command.trim();  
 
-// Function to process Serial commands for PID tuning
-void processSerialCommands() {
-    if (Serial.available() > 0) {
-        String command = Serial.readStringUntil('\n');
-        command.trim();
+        if (command.startsWith("Kp_angle")) {  
+            Kp_angle = command.substring(9).toFloat();  
+            pid_angle.SetTunings(Kp_angle, Ki_angle, Kd_angle);  
+            Serial.print("Updated Kp_angle: ");  
+            Serial.println(Kp_angle);  
+        } else if (command.startsWith("Ki_angle")) {  
+            Ki_angle = command.substring(9).toFloat();  
+            pid_angle.SetTunings(Kp_angle, Ki_angle, Kd_angle);  
+            Serial.print("Updated Ki_angle: ");  
+            Serial.println(Ki_angle);  
+        } else if (command.startsWith("Kd_angle")) {  
+            Kd_angle = command.substring(9).toFloat();  
+            pid_angle.SetTunings(Kp_angle, Ki_angle, Kd_angle);  
+            Serial.print("Updated Kd_angle: ");  
+            Serial.println(Kd_angle);  
+        } else if (command.startsWith("controlMode")) {  
+            controlMode = command.substring(12).toInt();  
+            Serial.print("Updated Control Mode: ");  
+            Serial.println(controlMode);  
+        } else {  
+            Serial.println("Invalid command.");  
+        }  
+    }  
+}  
 
-        // Parse the command
-        if (command.startsWith("Kp")) {
-            Kp = command.substring(2).toFloat(); // Extract value after "Kp"
-            pid1.SetTunings(Kp, Ki, Kd);
-            pid2.SetTunings(Kp, Ki, Kd);
-            Serial.print("Updated Kp: ");
-            Serial.println(Kp);
-        } else if (command.startsWith("Ki")) {
-            Ki = command.substring(2).toFloat(); // Extract value after "Ki"
-            pid1.SetTunings(Kp, Ki, Kd);
-            pid2.SetTunings(Kp, Ki, Kd);
-            Serial.print("Updated Ki: ");
-            Serial.println(Ki);
-        } else if (command.startsWith("Kd")) {
-            Kd = command.substring(2).toFloat(); // Extract value after "Kd"
-            pid1.SetTunings(Kp, Ki, Kd);
-            pid2.SetTunings(Kp, Ki, Kd);
-            Serial.print("Updated Kd: ");
-            Serial.println(Kd);
-        } else if (command.startsWith("setpoint")) {
-            setpoint = command.substring(8).toFloat(); // Extract value after "setpoint"
-            Serial.print("Updated Setpoint: ");
-            Serial.println(setpoint);
-        } else {
-            Serial.println("Invalid command. Use:");
-            Serial.println("  Kp[value] (e.g., Kp2.5)");
-            Serial.println("  Ki[value] (e.g., Ki0.5)");
-            Serial.println("  Kd[value] (e.g., Kd1.0)");
-            Serial.println("  setpoint[value] (e.g., setpoint0.0)");
-        }
-    }
-}
+void setupWiFi() {  
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);  
+    while (WiFi.status() != WL_CONNECTED) {  
+        delay(1000);  
+        Serial.println("Connecting to WiFi...");  
+    }  
+    Serial.println("Connected to WiFi!");  
+    Serial.print("IP Address: ");  
+    Serial.println(WiFi.localIP());  
+}  
+
+void setupWebServer() {  
+    // Serve the index.html file  
+    server.on("/", HTTP_GET, []() {  
+        File file = SPIFFS.open("/index.html", "r");  
+        if (!file) {  
+            server.send(500, "text/plain", "Failed to load index.html");  
+            return;  
+        }  
+        server.streamFile(file, "text/html");  
+        file.close();  
+    });  
+
+    // Handle other requests (e.g., commands, PID updates)  
+    server.on("/command", HTTP_GET, []() {  
+        String cmd = server.arg("cmd");  
+        // Handle commands here  
+        server.send(200, "text/plain", "Command received: " + cmd);  
+    });  
+
+    server.on("/pid", HTTP_POST, []() {  
+        // Handle PID updates here  
+        server.send(200, "text/plain", "PID values updated");  
+    });  
+
+    server.on("/mode", HTTP_GET, []() {  
+        String mode = server.arg("set");  
+        // Handle mode changes here  
+        server.send(200, "text/plain", "Mode changed to: " + mode);  
+    });  
+
+    server.begin();  
+    Serial.println("Web Server started.");  
+}  
