@@ -6,22 +6,22 @@
 
 // Microstepping configuration (adjust based on your motor driver setting)
 #define STEPS_PER_REV 200      // Full steps per revolution (typically 200 for 1.8° motors)
-#define MICROSTEPPING 2        // Microstepping setting (e.g., 16, 32, etc.)
+#define MICROSTEPPING 32        // Microstepping setting (e.g., 16, 32, etc.)
 
 // Speed and acceleration
 #define MAX_SPEED_RPM 100     // Maximum speed in RPM
 #define ACCELERATION 8*200*100      // Steps per second^2
 
 // PID tuning parameters
-float Kp = 2.0, Ki = 0.0, Kd = 0.0;
+float Kp = 5.0, Ki = 1.0, Kd = 0.5;
 
 // PID variables for each motor
 float input = 0, output1 = 0, output2 = 0, setpoint = 0; // Setpoint is the desired tilt angle (e.g., 0°)
 uint32_t stepFrequency;
 
 // PID instances for each motor
-PID pid1(&input, &output1, &setpoint, Kp, Ki, Kd, 1, DIRECT);
-PID pid2(&input, &output2, &setpoint, Kp, Ki, Kd, 1, DIRECT);
+PID pid1(&input, &output1, &setpoint, Kp, Ki, Kd, 1, REVERSE);
+PID pid2(&input, &output2, &setpoint, Kp, Ki, Kd, 1, REVERSE);
 
 // Stepper instances
 FastAccelStepperEngine engine;
@@ -57,7 +57,7 @@ void setup() {
     stepper1->setDirectionPin(MOTOR1_DIR_PIN);
     stepper1->setEnablePin(MOTOR1_ENABLE_PIN);
     stepper1->setAutoEnable(true);
-    stepper1->setSpeedInHz(calculateStepFrequency(MAX_SPEED_RPM));
+    stepper1->setSpeedInHz(0);
     stepper1->setAcceleration(ACCELERATION);
 
     // Configure Motor 2
@@ -69,7 +69,7 @@ void setup() {
     stepper2->setDirectionPin(MOTOR2_DIR_PIN);
     stepper2->setEnablePin(MOTOR2_ENABLE_PIN);
     stepper2->setAutoEnable(true);
-    stepper2->setSpeedInHz(calculateStepFrequency(MAX_SPEED_RPM));
+    stepper2->setSpeedInHz(0);
     stepper2->setAcceleration(ACCELERATION);
 
     // Initialize PID controllers
@@ -92,7 +92,7 @@ void loop() {
     processSerialCommands();
 
     imu.update();
-    input = imu.getPitch();
+    input = imu.getRoll();
 
     // Update PID for both motors
     pid1.Compute();
@@ -113,7 +113,7 @@ void loop() {
 
 
     // Control Motor 2
-    if (output2 > 0) {
+    if (output2 < 0) {
         stepper2->runForward();
         
     } else {
@@ -157,7 +157,7 @@ void printAlignedValue(const char* label, float value, int width) {
 
 // Function to calculate step frequency based on RPM
 uint32_t calculateStepFrequency(uint32_t rpm) {
-    return (rpm * STEPS_PER_REV * MICROSTEPPING) / 60.0 * 16;
+    return (rpm * STEPS_PER_REV * MICROSTEPPING) / 60.0;
 }
 
 // Function to process Serial commands for PID tuning

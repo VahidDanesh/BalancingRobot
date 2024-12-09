@@ -69,7 +69,7 @@ class PIDPlotter:
         }
 
         # Configure plot
-        self.ax.set_ylim(-100, 100)
+        self.ax.set_ylim(-50, 50)
         self.ax.set_xlim(0, 30)
         self.ax.grid(True)
         self.ax.legend()
