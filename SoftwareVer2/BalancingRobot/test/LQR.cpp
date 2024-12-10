@@ -18,7 +18,7 @@ float K[2][5] = {
 };  
 
 
-float speedFactor = 1.0f; // Speed scaling factor
+float speedFactor = 200.0f; // Speed scaling factor
 // Stepper instances  
 FastAccelStepperEngine engine;  
 FastAccelStepper* stepper1 = nullptr;  
@@ -62,30 +62,9 @@ void setup() {
     // Initialize stepper engine  
     engine.init();  
 
-    stepper1 = engine.stepperConnectToPin(MOTOR1_STEP_PIN);  
-    if (!stepper1) {  
-        Serial.println("Motor connection failed!");  
-        while (1);  
-    }  
-    stepper1->setDirectionPin(MOTOR1_DIR_PIN);  
-    stepper1->setEnablePin(MOTOR1_ENABLE_PIN);  
-    stepper1->setAutoEnable(true);  
-    stepper1->setSpeedInHz(0);  
-    stepper1->setAcceleration(MAX_ACCELERATION);  
-    Serial.println("Motor Initialized");
-
-    stepper2 = engine.stepperConnectToPin(MOTOR2_STEP_PIN);
-    if (!stepper2) {
-        Serial.println("Motor connection failed!");
-        while (1);
-    }
-    stepper2->setDirectionPin(MOTOR2_DIR_PIN);
-    stepper2->setEnablePin(MOTOR2_ENABLE_PIN);
-    stepper2->setAutoEnable(true);
-    stepper2->setSpeedInHz(0);
-    stepper2->setAcceleration(MAX_ACCELERATION);
-    Serial.println("Motor Initialized");
-
+    // Initialize motors
+    initMotor(stepper1, MOTOR1_STEP_PIN, MOTOR1_DIR_PIN, MOTOR1_ENABLE_PIN);
+    initMotor(stepper2, MOTOR2_STEP_PIN, MOTOR2_DIR_PIN, MOTOR2_ENABLE_PIN);
 
 
     Serial.println("System Initialized. LQR control is active.");  
@@ -113,21 +92,25 @@ void loop() {
     speed1 = speedFactor * calculateStepFrequency((u[0] + u[1]) / 2);  
     speed2 = speedFactor * calculateStepFrequency((u[0] - u[1]) / 2);
 
-    speed1 = constraint(speed1, -calculateStepFrequency(MAX_SPEED_RPM), calculateStepFrequency(MAX_SPEED_RPM)); 
-    speed2 = constraint(speed2, -calculateStepFrequency(MAX_SPEED_RPM), calculateStepFrequency(MAX_SPEED_RPM));
+    speed1 = constraint(speed1, -MAX_SPEED_RPM, MAX_SPEED_RPM);
+    speed2 = constraint(speed2, -MAX_SPEED_RPM, MAX_SPEED_RPM);
+
+    Serial.println(speed1);
+    Serial.println(speed2);
 
 
     // Control Motor 1  
     if (speed1 > 0) {  
         stepper1->setSpeedInHz(speed1);  
-        stepper1->runForward(); 
+        stepper1->runForward();
+        Serial.println("Motor 1 Forward");  
     } else {  
         stepper1->setSpeedInHz(speed1);  
         stepper1->runBackward();  
     }  
 
     // Control Motor 2  
-    if (speed2 < 0) {  
+    if (speed2 > 0) {  
         stepper2->setSpeedInHz(speed2);  
         stepper2->runForward();  
     } else {  
@@ -149,7 +132,7 @@ void loop() {
     Serial.print(", Output2: ");
     Serial.println(speed2);
 
-    delay(100); // Loop frequency  
+    delay(10); // Loop frequency  
 }  
 
 void updateStateVector() {  
@@ -157,9 +140,12 @@ void updateStateVector() {
     imu.update();  
     x[0] = imu.getRoll();       // Tilt angle (alpha)
     x[1] = imu.getRollRate();   // Tilt angular velocity (alpha_dot) 
-    x[2] = getCurrentSpeedInMPS(stepper1, stepper2);                   // Forward velocity (v) - Placeholder  
+    Serial.println(x[1]);
+    x[2] = 0;                   // Forward velocity (v) - Placeholder  
+    Serial.println(x[2]);
     x[3] = imu.getYaw();        // Heading angle (theta)  
     x[4] = imu.getYawRate();    // Heading angular velocity (theta_dot) 
+
 }  
 
 float calculateStepFrequency(float speedRPM) {  
@@ -202,7 +188,19 @@ float getCurrentSpeedInMPS(FastAccelStepper* stepper1, FastAccelStepper* stepper
 }
 
 
-
+void initMotor(FastAccelStepper* stepper, uint8_t stepPin, uint8_t dirPin, uint8_t enablePin) {  
+    stepper = engine.stepperConnectToPin(stepPin);  
+    if (!stepper) {  
+        Serial.println("Motor connection failed!");  
+        while (1);  
+    }  
+    stepper->setDirectionPin(dirPin);  
+    stepper->setEnablePin(enablePin);  
+    stepper->setAutoEnable(true);  
+    stepper->setSpeedInHz(0);  
+    stepper->setAcceleration(MAX_ACCELERATION);  
+    Serial.println("Motor Initialized");
+}
 
 void processSerialCommands() {  
     if (Serial.available() > 0) {  

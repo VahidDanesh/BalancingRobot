@@ -177,25 +177,25 @@ void IMUHandler::update() {
 }
 
 float IMUHandler::getYaw() const {
-    return ypr[0] ; // Convert to degrees
+    return ypr[0] ;
 }
 
 float IMUHandler::getPitch() const {
-    return ypr[1] ; // Convert to degrees
+    return ypr[1] ; 
 }
 
 float IMUHandler::getRoll() const {
-    return ypr[2] ; // Convert to degrees
+    return ypr[2] ;
 }
 
 float IMUHandler::getYawRate() const {  
-    return yprRate[0] ; // Convert to degrees per second  
+    return yprRate[0] ;  
 }
 
 float IMUHandler::getPitchRate() const {  
-    return yprRate[1] ; // Convert to degrees per second  
+    return yprRate[1] ;
 }
 
 float IMUHandler::getRollRate() const {  
-    return yprRate[2] ; // Convert to degrees per second  
+    return yprRate[2] ;  
 }  
