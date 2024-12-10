@@ -2,21 +2,13 @@
 #include <FastAccelStepper.h>  
 #include <PID_v1.h>  
 #include <WiFi.h>  
-#include <WebServer.h>  
+#include <ESPAsyncWebServer.h>  
+#include <AsyncTCP.h>  
 #include <SPIFFS.h>  
 #include "config.h"  
 #include "IMUHandler.h"  
 
 
-
-// Safety limits  
-#define MAX_TILT_ANGLE 30.0f  
-#define EMERGENCY_STOP_ANGLE 60.0f  
-
-// Control modes  
-#define PID_ANGLE 0  
-#define PID_POS 1  
-#define PID_SPEED 2  
 
 uint8_t controlMode = PID_POS; // Default to angle+position control  
 
@@ -44,7 +36,7 @@ FastAccelStepper* stepper2 = nullptr;
 IMUHandler& imu = IMUHandler::getInstance();  
 
 // WiFi and Web Server  
-WebServer server(WEB_SERVER_PORT);  
+AsyncWebServer server(WEB_SERVER_PORT);  
 
 // Function declarations  
 void setupWiFi();  
@@ -211,36 +203,31 @@ void setupWiFi() {
     Serial.println(WiFi.localIP());  
 }  
 
+
 void setupWebServer() {  
     // Serve the index.html file  
-    server.on("/", HTTP_GET, []() {  
-        File file = SPIFFS.open("/index.html", "r");  
-        if (!file) {  
-            server.send(500, "text/plain", "Failed to load index.html");  
-            return;  
+    server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {  
+        request->send(SPIFFS, "/index.html", "text/html");  
+    });  
+
+    // Handle PID updates  
+    server.on("/pid", HTTP_POST, [](AsyncWebServerRequest* request) {  
+        if (request->hasParam("Kp_angle", true)) {  
+            Kp_angle = request->getParam("Kp_angle", true)->value().toFloat();  
+            pid_angle.SetTunings(Kp_angle, Ki_angle, Kd_angle);  
         }  
-        server.streamFile(file, "text/html");  
-        file.close();  
+        if (request->hasParam("Ki_angle", true)) {  
+            Ki_angle = request->getParam("Ki_angle", true)->value().toFloat();  
+            pid_angle.SetTunings(Kp_angle, Ki_angle, Kd_angle);  
+        }  
+        if (request->hasParam("Kd_angle", true)) {  
+            Kd_angle = request->getParam("Kd_angle", true)->value().toFloat();  
+            pid_angle.SetTunings(Kp_angle, Ki_angle, Kd_angle);  
+        }  
+        request->send(200, "text/plain", "PID values updated");  
     });  
 
-    // Handle other requests (e.g., commands, PID updates)  
-    server.on("/command", HTTP_GET, []() {  
-        String cmd = server.arg("cmd");  
-        // Handle commands here  
-        server.send(200, "text/plain", "Command received: " + cmd);  
-    });  
-
-    server.on("/pid", HTTP_POST, []() {  
-        // Handle PID updates here  
-        server.send(200, "text/plain", "PID values updated");  
-    });  
-
-    server.on("/mode", HTTP_GET, []() {  
-        String mode = server.arg("set");  
-        // Handle mode changes here  
-        server.send(200, "text/plain", "Mode changed to: " + mode);  
-    });  
-
+    // Start the server  
     server.begin();  
     Serial.println("Web Server started.");  
 }  

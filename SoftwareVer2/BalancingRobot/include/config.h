@@ -53,6 +53,11 @@
 // Web Server Port
 #define WEB_SERVER_PORT 80
 
-// Safety Limits
-#define MAX_TILT_ANGLE 30.0f  // degrees
-#define EMERGENCY_STOP_ANGLE 60 .0f  // degrees
+// Safety limits  
+#define MAX_TILT_ANGLE 30.0f  
+#define EMERGENCY_STOP_ANGLE 60.0f  
+
+// Control modes  
+#define PID_ANGLE 0  
+#define PID_POS 1  
+#define PID_SPEED 2  
