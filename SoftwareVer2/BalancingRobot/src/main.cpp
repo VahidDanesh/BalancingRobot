@@ -119,19 +119,19 @@ void loop() {
 
     // Control Motor 1  
     if (speed1 > 0) {  
-        stepper1->setSpeedInHz(speed1);  
+        stepper1->setSpeedInHz(abs(speed1));  
         stepper1->runForward(); 
     } else {  
-        stepper1->setSpeedInHz(speed1);  
+        stepper1->setSpeedInHz(abs(speed1));  
         stepper1->runBackward();  
     }  
 
     // Control Motor 2  
     if (speed2 < 0) {  
-        stepper2->setSpeedInHz(speed2);  
+        stepper2->setSpeedInHz(abs(speed2));  
         stepper2->runForward();  
     } else {  
-        stepper2->setSpeedInHz(speed2);  
+        stepper2->setSpeedInHz(abs(speed2));  
         stepper2->runBackward();  
     }  
 
