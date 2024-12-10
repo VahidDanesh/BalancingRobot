@@ -38,15 +38,13 @@
 #define NEOPIXEL_PIN 16
 
 // Motor Configuration
-#define MICROSTEPS 16
+#define MICROSTEPS 32
 #define STEPS_PER_REV 200
 #define MAX_SPEED 20000  // steps/second
-#define MAX_ACCELERATION 200000  // steps/second^2
+#define MAX_SPEED_RPM 200 //rpm
+#define MAX_ACCELERATION MAX_SPEED_RPM * STEPS_PER_REV * MICROSTEPS / 60  // steps/second^2
 
-// PID Constants
-#define KP_DEFAULT 1.0
-#define KI_DEFAULT 0.0
-#define KD_DEFAULT 0.0
+
 
 // WiFi Configuration
 #define WIFI_SSID "GalaxyS23"

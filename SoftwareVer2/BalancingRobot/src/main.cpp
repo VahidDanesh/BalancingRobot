@@ -7,13 +7,7 @@
 #include "config.h"  
 #include "IMUHandler.h"  
 
-// Microstepping configuration  
-#define STEPS_PER_REV 200  
-#define MICROSTEPPING 32  
 
-// Speed and acceleration  
-#define MAX_SPEED_RPM 100  
-#define ACCELERATION 8 * 200 * 100  
 
 // Safety limits  
 #define MAX_TILT_ANGLE 30.0f  
@@ -57,11 +51,12 @@ void setupWiFi();
 void setupWebServer();  
 void handleWebRequests();  
 void processSerialCommands();  
-uint32_t calculateStepFrequency(uint32_t rpm);  
+uint32_t calculateStepFrequency(uint32_t rpm);
+void initMotor(FastAccelStepper* stepper, uint8_t stepPin, uint8_t dirPin, uint8_t enablePin);  
 void updateControlMode();  
 
 void setup() {  
-    Serial.begin(115200);  
+    Serial.begin(SERIAL_BAUD);  
 
     // Initialize SPIFFS  
     if (!SPIFFS.begin(true)) {  
@@ -76,29 +71,9 @@ void setup() {
     // Initialize stepper engine  
     engine.init();  
 
-    // Configure Motor 1  
-    stepper1 = engine.stepperConnectToPin(MOTOR1_STEP_PIN);  
-    if (!stepper1) {  
-        Serial.println("Motor 1 connection failed!");  
-        while (1);  
-    }  
-    stepper1->setDirectionPin(MOTOR1_DIR_PIN);  
-    stepper1->setEnablePin(MOTOR1_ENABLE_PIN);  
-    stepper1->setAutoEnable(true);  
-    stepper1->setSpeedInHz(0);  
-    stepper1->setAcceleration(ACCELERATION);  
-
-    // Configure Motor 2  
-    stepper2 = engine.stepperConnectToPin(MOTOR2_STEP_PIN);  
-    if (!stepper2) {  
-        Serial.println("Motor 2 connection failed!");  
-        while (1);  
-    }  
-    stepper2->setDirectionPin(MOTOR2_DIR_PIN);  
-    stepper2->setEnablePin(MOTOR2_ENABLE_PIN);  
-    stepper2->setAutoEnable(true);  
-    stepper2->setSpeedInHz(0);  
-    stepper2->setAcceleration(ACCELERATION);  
+    // Initialize motors
+    initMotor(stepper1, MOTOR1_STEP_PIN, MOTOR1_DIR_PIN, MOTOR1_ENABLE_PIN);
+    initMotor(stepper2, MOTOR2_STEP_PIN, MOTOR2_DIR_PIN, MOTOR2_ENABLE_PIN);
 
     // Initialize PID controllers  
     pid_angle.SetMode(AUTOMATIC);  
@@ -179,8 +154,21 @@ void updateControlMode() {
 }  
 
 uint32_t calculateStepFrequency(uint32_t rpm) {  
-    return (rpm * STEPS_PER_REV * MICROSTEPPING) / 60.0;  
+    return (rpm * STEPS_PER_REV * MICROSTEPS) / 60.0;  
 }  
+
+void initMotor(FastAccelStepper* stepper, uint8_t stepPin, uint8_t dirPin, uint8_t enablePin) {  
+    stepper = engine.stepperConnectToPin(stepPin);  
+    if (!stepper) {  
+        Serial.println("Motor connection failed!");  
+        while (1);  
+    }  
+    stepper->setDirectionPin(dirPin);  
+    stepper->setEnablePin(enablePin);  
+    stepper->setAutoEnable(true);  
+    stepper->setSpeedInHz(0);  
+    stepper->setAcceleration(MAX_ACCELERATION);  
+}
 
 void processSerialCommands() {  
     if (Serial.available() > 0) {  
