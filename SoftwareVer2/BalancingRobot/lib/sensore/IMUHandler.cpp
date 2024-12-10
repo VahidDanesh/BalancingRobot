@@ -156,18 +156,46 @@ void IMUHandler::update() {
             if (abs(ypr[0]) < 1 * DEG_TO_RAD) ypr[0] = 0;
             if (abs(ypr[1]) < 1 * DEG_TO_RAD) ypr[1] = 0;
             if (abs(ypr[2]) < 1 * DEG_TO_RAD) ypr[2] = 0;
+
+            // Calculate angular rates (yawRate, rollRate)  
+            uint32_t currentTime = millis();  
+            float deltaTime = (currentTime - lastTime) / 1000.0; // Convert to seconds  
+
+            if (deltaTime > 0) {  
+                yprRate[0] = (ypr[0] - lastYPR[0]) / deltaTime; // Yaw rate  
+                yprRate[1] = (ypr[1] - lastYPR[1]) / deltaTime; // Pitch rate  
+                yprRate[2] = (ypr[2] - lastYPR[2]) / deltaTime; // Roll rate  
+            }  
+
+            // Update last values  
+            lastYPR[0] = ypr[0];  
+            lastYPR[1] = ypr[1];  
+            lastYPR[2] = ypr[2];  
+            lastTime = currentTime; 
         }
     }
 }
 
 float IMUHandler::getYaw() const {
-    return ypr[0] * RAD_TO_DEG; // Convert to degrees
+    return ypr[0] ; // Convert to degrees
 }
 
 float IMUHandler::getPitch() const {
-    return ypr[1] * RAD_TO_DEG; // Convert to degrees
+    return ypr[1] ; // Convert to degrees
 }
 
 float IMUHandler::getRoll() const {
-    return ypr[2] * RAD_TO_DEG; // Convert to degrees
+    return ypr[2] ; // Convert to degrees
 }
+
+float IMUHandler::getYawRate() const {  
+    return yprRate[0] ; // Convert to degrees per second  
+}
+
+float IMUHandler::getPitchRate() const {  
+    return yprRate[1] ; // Convert to degrees per second  
+}
+
+float IMUHandler::getRollRate() const {  
+    return yprRate[2] ; // Convert to degrees per second  
+}  

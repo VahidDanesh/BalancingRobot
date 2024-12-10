@@ -13,6 +13,9 @@ public:
     float getYaw() const;
     float getPitch() const;
     float getRoll() const;
+    float getYawRate() const;
+    float getPitchRate() const;   
+    float getRollRate() const;
     static void dmpDataReady();
 
 private:
@@ -21,6 +24,9 @@ private:
     Quaternion q;           // Quaternion container
     VectorFloat gravity;    // Gravity vector
     float ypr[3];           // Yaw, Pitch, Roll angles
+    float yprRate[3];       // Yaw, Pitch, Roll rates
+    float lastYPR[3];       // Last Yaw, Pitch, Roll angles
+    uint32_t lastTime;      // Last update time
     uint8_t fifoBuffer[64]; // FIFO storage buffer
     uint16_t packetSize;    // Expected DMP packet size
     uint8_t devStatus;      // Device status
