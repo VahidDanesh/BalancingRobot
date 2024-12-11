@@ -40,9 +40,10 @@
 // Motor Configuration
 #define MICROSTEPS 32
 #define STEPS_PER_REV 200
-#define MAX_SPEED 20000  // steps/second
-#define MAX_SPEED_RPM 100 //rpm
-#define MAX_ACCELERATION MAX_SPEED_RPM * STEPS_PER_REV * MICROSTEPS / 60  // steps/second^2
+#define MAX_SPEED 25000  // steps/second
+#define MAX_SPEED_RPM 200 //rpm
+#define MAX_ACCELERATION MAX_SPEED*10  // steps/second^2
+#define MAX_SPEED_MPS 0.7f
 
 
 

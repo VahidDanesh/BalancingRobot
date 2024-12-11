@@ -8,17 +8,12 @@
 #include "config.h"  
 #include "IMUHandler.h"  
 
+// this program has some problem, first of all the motors start screaming when they reach to mas speed
+// second the LQR is not working properly, it is not able to reach the target position, maybe tuning the scaleFactor will help
+// third, the control input here assumed to be motor acceleration, I'm not sure if this aporoach is correct or not
 
 
 
-// LQR Gain Matrix (precomputed)  
-float K[2][5] = {  
-    {-367.7560, -21.1209, 10.0000, 0.0000, 0.0000},  
-    {0.0000, 0.0000, 0.0000, 10.0000, 10.0000}  
-};  
-
-
-float speedFactor = 1.0f; // Speed scaling factor
 // Stepper instances  
 FastAccelStepperEngine engine;  
 FastAccelStepper* stepper1 = nullptr;  
@@ -27,18 +22,32 @@ FastAccelStepper* stepper2 = nullptr;
 // IMU instance  
 IMUHandler& imu = IMUHandler::getInstance();  
 
+
+// LQR Gain Matrix (precomputed)  
+float K[2][5] = {  
+    {-243.8678, -8.2356, 10.0000, 0.0000, 0.0000},  
+    {0.0000, 0.0000, 0.0000, 0.0000, 0.0000}  
+};  
+
+
+
 // State vector  
 float x[5] = {0, 0, 0, 0, 0}; // [alpha, alpha_dot, v, theta, theta_dot]
 float wr[5] = {0, 0, 0, 0, 0}; // Reference state vector  
 float u[2] = {0, 0};          // Control inputs [u1, u2] 
-float speed1 = 0, speed2 = 0; // Motor speeds in Hz 
+float speed1 = 0, speed2 = 0; // Motor speeds in Hz
+float scaleFactor = 1.0f; // Speed scaling factor
+float acc1 = 0, acc2 = 0; // Acceleration values for motors
+bool setSpeed = false; // Flag to set speed only once
+
 
 // Function prototypes   
 void setupWiFi();  
 void setupWebServer();  
 void handleWebRequests();  
 void processSerialCommands();  
-float calculateStepFrequency(float rpm);
+float rpm2sps(float rpm);
+float rpss2spss(float accRPSS);
 void initMotor(FastAccelStepper* stepper, uint8_t stepPin, uint8_t dirPin, uint8_t enablePin);  
 void updateControlMode();  
 void updateStateVector();
@@ -107,33 +116,61 @@ void loop() {
         u[1] += -K[1][i] * (x[i] - wr[i]);  
     }  
 
+    acc1 = (u[0] + u[1]) / 2; // Acceleration for motor 1 [rad/s^2]
+    acc2 = (u[0] - u[1]) / 2; // Acceleration for motor 2 [rad/s^2]
+
+    acc1 = scaleFactor * rpss2spss(acc1); // Convert to steps/s^2
+    acc2 = scaleFactor * rpss2spss(acc2); // Convert to steps/s^2
+
+    acc1 = constraint(acc1, -MAX_ACCELERATION, MAX_ACCELERATION);
+    acc2 = constraint(acc2, -MAX_ACCELERATION, MAX_ACCELERATION);
 
 
-    // Map control inputs (torques) to motor speeds  
-    speed1 = speedFactor * calculateStepFrequency((u[0] + u[1]) / 2);  
-    speed2 = speedFactor * calculateStepFrequency((u[0] - u[1]) / 2);
-
-    speed1 = constraint(speed1, -calculateStepFrequency(MAX_SPEED_RPM), calculateStepFrequency(MAX_SPEED_RPM)); 
-    speed2 = constraint(speed2, -calculateStepFrequency(MAX_SPEED_RPM), calculateStepFrequency(MAX_SPEED_RPM));
 
 
-    // Control Motor 1  
-    if (speed1 > 0) {  
-        stepper1->setSpeedInHz(abs(speed1));  
-        stepper1->runForward(); 
-    } else {  
-        stepper1->setSpeedInHz(abs(speed1));  
-        stepper1->runBackward();  
-    }  
+    // // Map control inputs (torques) to motor speeds  
+    // speed1 = scaleFactor * rpm2sps((u[0] + u[1]) / 2);  
+    // speed2 = scaleFactor * rpm2sps((u[0] - u[1]) / 2);
 
-    // Control Motor 2  
-    if (speed2 < 0) {  
-        stepper2->setSpeedInHz(abs(speed2));  
-        stepper2->runForward();  
-    } else {  
-        stepper2->setSpeedInHz(abs(speed2));  
-        stepper2->runBackward();  
-    }  
+    // speed1 = constraint(speed1, -rpm2sps(MAX_SPEED_RPM), rpm2sps(MAX_SPEED_RPM)); 
+    // speed2 = constraint(speed2, -rpm2sps(MAX_SPEED_RPM), rpm2sps(MAX_SPEED_RPM));
+
+
+    // // Control Motor 1  
+    // if (acc1 > 0) {  
+    //     stepper1->setAcceleration(abs(acc1));  
+    //     stepper1->runForward(); 
+    // } else {  
+    //     stepper1->setAcceleration(abs(acc1));  
+    //     stepper1->runBackward();  
+    // }  
+
+    // // Control Motor 2  
+    // if (acc2 > 0) {  
+    //     stepper2->setAcceleration(abs(acc2));  
+    //     stepper2->runBackward();  
+    // } else {  
+    //     stepper2->setAcceleration(abs(acc2));  
+    //     stepper2->runForward();  
+    // }  
+    if (!setSpeed) {
+        stepper1->setSpeedInHz(MAX_SPEED);
+        stepper2->setSpeedInHz(MAX_SPEED);
+        setSpeed = true;
+    } 
+
+    // Control Motor 1 using moveByAcceleration()
+    stepper1->moveByAcceleration(acc1);
+
+    // Control Motor 2 using moveByAcceleration()
+    stepper2->moveByAcceleration(-acc2);
+
+    if (abs(x[0] * RAD_TO_DEG) > MAX_TILT_ANGLE) {  
+        Serial.println("Emergency Stop: Tilt angle exceeded!");  
+        stepper1->stopMove();  
+        stepper2->stopMove();  
+    }
+
 
     // Print state and control inputs for debugging  
     Serial.print("State: ");  
@@ -145,9 +182,9 @@ void loop() {
     Serial.print("Input: ");
     Serial.print(x[0]);
     Serial.print(", Output1: ");
-    Serial.print(speed1);
+    Serial.print(acc1);
     Serial.print(", Output2: ");
-    Serial.println(speed2);
+    Serial.println(acc2);
 
     delay(100); // Loop frequency  
 }  
@@ -157,14 +194,18 @@ void updateStateVector() {
     imu.update();  
     x[0] = imu.getRoll();       // Tilt angle (alpha)
     x[1] = imu.getRollRate();   // Tilt angular velocity (alpha_dot) 
-    x[2] = getCurrentSpeedInMPS(stepper1, stepper2);                   // Forward velocity (v) - Placeholder  
+    x[2] = getCurrentSpeedInMPS(stepper1, stepper2);                   // Forward velocity (v) m/s - Placeholder  
     x[3] = imu.getYaw();        // Heading angle (theta)  
     x[4] = imu.getYawRate();    // Heading angular velocity (theta_dot) 
 }  
 
-float calculateStepFrequency(float speedRPM) {  
+float rpm2sps(float speedRPM) {  
     return (speedRPM * STEPS_PER_REV * MICROSTEPS) / 60.0;  
 }  
+
+float rpss2spss (float accRPSS) {  
+    return (accRPSS * STEPS_PER_REV * MICROSTEPS) / TWO_PI;  
+}
 
 
 float constraint(float value, float min, float max) {  
@@ -185,11 +226,11 @@ float getCurrentSpeedInMPS(FastAccelStepper* stepper1, FastAccelStepper* stepper
         return 0.0; 
     } 
 
-    int32_t mot1Speed = stepper1->getCurrentSpeedInMilliHz();
-    int32_t mot2Speed = stepper2->getCurrentSpeedInMilliHz();
+    int32_t mot1Speed = stepper1->getCurrentSpeedInMilliHz(false);
+    int32_t mot2Speed = stepper2->getCurrentSpeedInMilliHz(false);
 
 
-    float speed = (mot1Speed + mot2Speed) / 2.0;
+    float speed = abs((mot1Speed - mot2Speed) / 2.0);
 
 
     // convert the speed of stepper in us to m/s using wheelRadius
@@ -210,10 +251,10 @@ void processSerialCommands() {
         command.trim();  
 
         if (command.startsWith("Kp")) {  
-            speedFactor = command.substring(2).toFloat();  
+            scaleFactor = command.substring(2).toFloat();  
   
-            Serial.print("Updated speedFactor: ");  
-            Serial.println(speedFactor);  
+            Serial.print("Updated scaleFactor: ");  
+            Serial.println(scaleFactor);  
         }
 
     }  
