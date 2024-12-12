@@ -10,23 +10,6 @@
 
 
 
-uint8_t controlMode = PID_ANGLE; // Default to angle+position control  
-
-// PID tuning parameters  
-float Kp_angle = 5.0, Ki_angle = 1.0, Kd_angle = 0.5;  
-float Kp_pos = 2.0, Ki_pos = 0.5, Kd_pos = 0.1;  
-float Kp_speed = 3.0, Ki_speed = 0.8, Kd_speed = 0.2;  
-
-// PID variables  
-float input_angle = 0, output_angle = 0, setpoint_angle = 0;  
-float input_pos = 0, output_pos = 0, setpoint_pos = 0;  
-float input_speed = 0, output_speed = 0, setpoint_speed = 0;  
-
-// PID instances  
-PID pid_angle(&input_angle, &output_angle, &setpoint_angle, Kp_angle, Ki_angle, Kd_angle, DIRECT);  
-PID pid_pos(&input_pos, &output_pos, &setpoint_pos, Kp_pos, Ki_pos, Kd_pos, DIRECT);  
-PID pid_speed(&input_speed, &output_speed, &setpoint_speed, Kp_speed, Ki_speed, Kd_speed, DIRECT);  
-
 // Stepper instances  
 FastAccelStepperEngine engine;  
 FastAccelStepper* stepper1 = nullptr;  
@@ -35,34 +18,51 @@ FastAccelStepper* stepper2 = nullptr;
 // IMU instance  
 IMUHandler& imu = IMUHandler::getInstance();  
 
-// WiFi and Web Server  
-AsyncWebServer server(WEB_SERVER_PORT);  
+// State vector  
+float x[5] = {0, 0, 0, 0, 0}; // [alpha, alpha_dot, v, theta, theta_dot]
+float wr[5] = {0, 0, 0, 0, 0}; // Reference state vector  
+float u[2] = {0, 0};          // Control inputs [u1, u2] 
+float speed1 = 0, speed2 = 0; // Motor speeds in Hz 
 
-// Function declarations  
+
+// LQR Gain Matrix (precomputed)  
+float K[2][5] = {  
+    {-75.0848, -3.3575, 3.1623, 0.0000, 0.0000},  
+    {0.0000, 0.0000, 0.0000, 0.0000, 0.0000}  
+};  
+
+
+float speedFactor = 600.0f; // Speed scaling factor
+
+
+
+// Function prototypes   
 void setupWiFi();  
 void setupWebServer();  
 void handleWebRequests();  
 void processSerialCommands();  
-uint32_t rpm2sps(uint32_t rpm);
+float rpm2sps(float rpm);
+void initMotor(FastAccelStepper* stepper, uint8_t stepPin, uint8_t dirPin, uint8_t enablePin);  
 void updateControlMode();  
+void updateStateVector();
+float getCurrentSpeedInMPS(FastAccelStepper* stepMot1, FastAccelStepper* stepMot2);
 
 void setup() {  
-    Serial.begin(SERIAL_BAUD);  
+    Serial.begin(SERIAL_BAUD);
+
 
     // Initialize SPIFFS  
     if (!SPIFFS.begin(true)) {  
         Serial.println("Failed to mount SPIFFS!");  
         while (1);  
-    }  
+    }    
 
     // Initialize IMU  
     imu.initialize();  
     imu.calibrate(true);  
 
     // Initialize stepper engine  
-    engine.init();
-
-    // Initialize motors  
+    engine.init();  
     stepper1 = engine.stepperConnectToPin(MOTOR1_STEP_PIN);  
     if (!stepper1) {  
         Serial.println("Motor connection failed!");  
@@ -71,7 +71,7 @@ void setup() {
     stepper1->setDirectionPin(MOTOR1_DIR_PIN);  
     stepper1->setEnablePin(MOTOR1_ENABLE_PIN);  
     stepper1->setAutoEnable(true);  
-    stepper1->setSpeedInHz(0);  
+    stepper1->setSpeedInHz(1);  
     stepper1->setAcceleration(MAX_ACCELERATION);  
     Serial.println("Motor Initialized");
 
@@ -83,128 +83,144 @@ void setup() {
     stepper2->setDirectionPin(MOTOR2_DIR_PIN);
     stepper2->setEnablePin(MOTOR2_ENABLE_PIN);
     stepper2->setAutoEnable(true);
-    stepper2->setSpeedInHz(0);
+    stepper2->setSpeedInHz(1);
     stepper2->setAcceleration(MAX_ACCELERATION);
     Serial.println("Motor Initialized");
 
 
-
-    // Initialize PID controllers  
-    pid_angle.SetMode(AUTOMATIC);  
-    pid_pos.SetMode(AUTOMATIC);  
-    pid_speed.SetMode(AUTOMATIC);  
-
-    pid_angle.SetOutputLimits(-MAX_SPEED_RPM, MAX_SPEED_RPM);  
-    pid_pos.SetOutputLimits(-MAX_TILT_ANGLE, MAX_TILT_ANGLE);  
-    pid_speed.SetOutputLimits(-MAX_TILT_ANGLE, MAX_TILT_ANGLE);  
-
-    // Setup WiFi and Web Server  
-    setupWiFi();  
-    setupWebServer();  
-
-    Serial.println("System Initialized. Use Serial or Web Interface to adjust parameters.");  
+    Serial.println("System Initialized. LQR control is active.");  
 }  
 
 void loop() {  
     // Process Serial commands  
-    processSerialCommands();  
- 
+    processSerialCommands(); 
 
-    // Update IMU data  
+    // Update state vector  
+    updateStateVector();
+
+
+    // Compute control inputs using LQR  
+    u[0] = 0; // Reset control input u1  
+    u[1] = 0; // Reset control input u2  
+    for (int i = 0; i < 5; i++) {  
+        u[0] += -K[0][i] * (x[i] - wr[i]);  
+        u[1] += -K[1][i] * (x[i] - wr[i]);  
+    }  
+
+
+
+    // Map control inputs (torques) to motor speeds  
+    speed1 = speedFactor * rpm2sps((u[0] + u[1]) / 2);  
+    speed2 = speedFactor * rpm2sps((u[0] - u[1]) / 2);
+    
+
+    speed1 = constrain(speed1, -MAX_SPEED_RPM, MAX_SPEED_RPM);
+    speed2 = constrain(speed2, -MAX_SPEED_RPM, MAX_SPEED_RPM);
+
+
+    // Control Motor 1  
+    if (speed1 > 0) {  
+        stepper1->setSpeedInHz(speed1);  
+        stepper1->runForward();
+    } else {  
+        stepper1->setSpeedInHz(speed1);  
+        stepper1->runBackward();  
+    }  
+
+    // Control Motor 2  
+    if (speed2 > 0) {  
+        stepper2->setSpeedInHz(speed2);  
+        stepper2->runForward();  
+    } else {  
+        stepper2->setSpeedInHz(speed2);  
+        stepper2->runBackward();  
+    }  
+
+    // Print state and control inputs for debugging  
+    Serial.print("State: ");  
+    for (int i = 0; i < 5; i++) {  
+        Serial.print(x[i]);  
+        Serial.print(" ");  
+    }  
+    // Print data for plotting
+    Serial.print("Input: ");
+    Serial.print(x[0]);
+    Serial.print(", Output1: ");
+    Serial.print(speed1);
+    Serial.print(", Output2: ");
+    Serial.println(speed2);
+
+    delay(10); // Loop frequency  
+}  
+
+void updateStateVector() {  
+    // Update state vector from sensors  
     imu.update();  
-    input_angle = imu.getRoll() * RAD_TO_DEG;  
+    x[0] = imu.getRoll();       // Tilt angle (alpha)
+    x[1] = imu.getRollRate();   // Tilt angular velocity (alpha_dot) 
+    x[2] = 0;                   // Forward velocity (v) - Placeholder  
+    x[3] = imu.getYaw();        // Heading angle (theta)  
+    x[4] = imu.getYawRate();    // Heading angular velocity (theta_dot) 
 
-    // Emergency stop if tilt angle exceeds safety limits  
-    if (abs(input_angle) > EMERGENCY_STOP_ANGLE) {  
-        stepper1->setSpeedInHz(0);
-        stepper2->setSpeedInHz(0);
-        Serial.println("Emergency Stop: Tilt angle exceeded safety limits!");  
-        return;  
+}  
+
+float rpm2sps(float speedRPM) {  
+    return (speedRPM * STEPS_PER_REV * MICROSTEPS) / 60.0;  
+}  
+
+
+
+float getCurrentSpeedInMPS(FastAccelStepper* stepper1, FastAccelStepper* stepper2) {  
+
+    // Check if the stepper pointers are valid  
+    if (stepper1 == nullptr || stepper2 == nullptr) {  
+        Serial.println("Error: Stepper motor not initialized!");  
+        return 0.0; 
+    } 
+
+    int32_t mot1Speed = stepper1->getCurrentSpeedInMilliHz();
+    int32_t mot2Speed = stepper2->getCurrentSpeedInMilliHz();
+
+
+    float speed = (mot1Speed + mot2Speed) / 2.0;
+
+
+    // convert the speed of stepper in us to m/s using wheelRadius
+    float speedInHZ = speed / 1000.0;
+    float speedInRPS = speedInHZ  / (STEPS_PER_REV * MICROSTEPS);
+    float speedInMPS = speedInRPS * TWO_PI *  WHEEL_RADIUS;
+
+
+    return speedInMPS; 
+}
+
+
+void initMotor(FastAccelStepper* stepper, uint8_t stepPin, uint8_t dirPin, uint8_t enablePin) {  
+    stepper = engine.stepperConnectToPin(stepPin);  
+    if (!stepper) {  
+        Serial.println("Motor connection failed!");  
+        while (1);  
     }  
-
-    // Update control mode  
-    updateControlMode();  
-
-    // Print data for debugging  
-    Serial.print("Control Mode: ");  
-    Serial.print(controlMode);  
-    Serial.print(", Input: ");  
-    Serial.print(input_angle);  
-    Serial.print(", Output: ");  
-    Serial.println(output_angle);  
-
-    delay(10); // Adjust loop frequency as needed  
-}  
-
-void updateControlMode() {  
-    switch (controlMode) {  
-        case PID_ANGLE:  
-            // Angle-only control  
-            pid_angle.Compute();
-            output_angle = constrain(output_angle, -MAX_SPEED_RPM, MAX_SPEED_RPM) * RAD_TO_DEG;
-            stepper1->setSpeedInHz(rpm2sps(abs(output_angle)));  
-            stepper2->setSpeedInHz(rpm2sps(abs(output_angle)));
-            if (output_angle < 0) {
-                stepper1->runForward();
-                stepper2->runBackward();
-            } else {
-                stepper1->runBackward();
-                stepper2->runForward();
-            }   
-            break;  
-
-        case PID_POS:  
-            // Position control  
-            pid_pos.Compute();  
-            setpoint_angle = output_pos; // Position controller sets tilt angle  
-            pid_angle.Compute();  
-            stepper1->setSpeedInHz(rpm2sps(abs(output_angle)));  
-            stepper2->setSpeedInHz(rpm2sps(abs(output_angle)));  
-            break;  
-
-        case PID_SPEED:  
-            // Speed control  
-            pid_speed.Compute();  
-            setpoint_angle = output_speed; // Speed controller sets tilt angle  
-            pid_angle.Compute();  
-            stepper1->setSpeedInHz(rpm2sps(abs(output_angle)));  
-            stepper2->setSpeedInHz(rpm2sps(abs(output_angle)));  
-            break;  
-    }  
-}  
-
-uint32_t rpm2sps(uint32_t rpm) {  
-    return (rpm * STEPS_PER_REV * MICROSTEPS) / 60.0;  
-}  
-
+    stepper->setDirectionPin(dirPin);  
+    stepper->setEnablePin(enablePin);  
+    stepper->setAutoEnable(true);  
+    stepper->setSpeedInHz(0);  
+    stepper->setAcceleration(MAX_ACCELERATION);  
+    Serial.println("Motor Initialized");
+}
 
 void processSerialCommands() {  
     if (Serial.available() > 0) {  
         String command = Serial.readStringUntil('\n');  
         command.trim();  
 
-        if (command.startsWith("Kp_angle")) {  
-            Kp_angle = command.substring(9).toFloat();  
-            pid_angle.SetTunings(Kp_angle, Ki_angle, Kd_angle);  
-            Serial.print("Updated Kp_angle: ");  
-            Serial.println(Kp_angle);  
-        } else if (command.startsWith("Ki_angle")) {  
-            Ki_angle = command.substring(9).toFloat();  
-            pid_angle.SetTunings(Kp_angle, Ki_angle, Kd_angle);  
-            Serial.print("Updated Ki_angle: ");  
-            Serial.println(Ki_angle);  
-        } else if (command.startsWith("Kd_angle")) {  
-            Kd_angle = command.substring(9).toFloat();  
-            pid_angle.SetTunings(Kp_angle, Ki_angle, Kd_angle);  
-            Serial.print("Updated Kd_angle: ");  
-            Serial.println(Kd_angle);  
-        } else if (command.startsWith("controlMode")) {  
-            controlMode = command.substring(12).toInt();  
-            Serial.print("Updated Control Mode: ");  
-            Serial.println(controlMode);  
-        } else {  
-            Serial.println("Invalid command.");  
-        }  
+        if (command.startsWith("Kp")) {  
+            speedFactor = command.substring(2).toFloat();  
+  
+            Serial.print("Updated speedFactor: ");  
+            Serial.println(speedFactor);  
+        }
+
     }  
 }  
 
@@ -220,30 +236,3 @@ void setupWiFi() {
 }  
 
 
-void setupWebServer() {  
-    // Serve the index.html file  
-    server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {  
-        request->send(SPIFFS, "/index.html", "text/html");  
-    });  
-
-    // Handle PID updates  
-    server.on("/pid", HTTP_POST, [](AsyncWebServerRequest* request) {  
-        if (request->hasParam("Kp_angle", true)) {  
-            Kp_angle = request->getParam("Kp_angle", true)->value().toFloat();  
-            pid_angle.SetTunings(Kp_angle, Ki_angle, Kd_angle);  
-        }  
-        if (request->hasParam("Ki_angle", true)) {  
-            Ki_angle = request->getParam("Ki_angle", true)->value().toFloat();  
-            pid_angle.SetTunings(Kp_angle, Ki_angle, Kd_angle);  
-        }  
-        if (request->hasParam("Kd_angle", true)) {  
-            Kd_angle = request->getParam("Kd_angle", true)->value().toFloat();  
-            pid_angle.SetTunings(Kp_angle, Ki_angle, Kd_angle);  
-        }  
-        request->send(200, "text/plain", "PID values updated");  
-    });  
-
-    // Start the server  
-    server.begin();  
-    Serial.println("Web Server started.");  
-}  

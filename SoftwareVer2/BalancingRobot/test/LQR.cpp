@@ -13,12 +13,12 @@
 
 // LQR Gain Matrix (precomputed)  
 float K[2][5] = {  
-    {-367.7560, -21.1209, 10.0000, 0.0000, 0.0000},  
-    {0.0000, 0.0000, 0.0000, 10.0000, 10.0000}  
+    {-75.0848, -3.3575, 3.1623, 0.0000, 0.0000},  
+    {0.0000, 0.0000, 0.0000, 0.0000, 0.0000}  
 };  
 
 
-float speedFactor = 200.0f; // Speed scaling factor
+float speedFactor = 600.0f; // Speed scaling factor
 // Stepper instances  
 FastAccelStepperEngine engine;  
 FastAccelStepper* stepper1 = nullptr;  
@@ -38,12 +38,11 @@ void setupWiFi();
 void setupWebServer();  
 void handleWebRequests();  
 void processSerialCommands();  
-float calculateStepFrequency(float rpm);
+float rpm2sps(float rpm);
 void initMotor(FastAccelStepper* stepper, uint8_t stepPin, uint8_t dirPin, uint8_t enablePin);  
 void updateControlMode();  
 void updateStateVector();
 float getCurrentSpeedInMPS(FastAccelStepper* stepMot1, FastAccelStepper* stepMot2);
-float constraint(float value, float min, float max);
 
 void setup() {  
     Serial.begin(SERIAL_BAUD);
@@ -61,10 +60,29 @@ void setup() {
 
     // Initialize stepper engine  
     engine.init();  
+    stepper1 = engine.stepperConnectToPin(MOTOR1_STEP_PIN);  
+    if (!stepper1) {  
+        Serial.println("Motor connection failed!");  
+        while (1);  
+    }  
+    stepper1->setDirectionPin(MOTOR1_DIR_PIN);  
+    stepper1->setEnablePin(MOTOR1_ENABLE_PIN);  
+    stepper1->setAutoEnable(true);  
+    stepper1->setSpeedInHz(1);  
+    stepper1->setAcceleration(MAX_ACCELERATION);  
+    Serial.println("Motor Initialized");
 
-    // Initialize motors
-    initMotor(stepper1, MOTOR1_STEP_PIN, MOTOR1_DIR_PIN, MOTOR1_ENABLE_PIN);
-    initMotor(stepper2, MOTOR2_STEP_PIN, MOTOR2_DIR_PIN, MOTOR2_ENABLE_PIN);
+    stepper2 = engine.stepperConnectToPin(MOTOR2_STEP_PIN);
+    if (!stepper2) {
+        Serial.println("Motor connection failed!");
+        while (1);
+    }
+    stepper2->setDirectionPin(MOTOR2_DIR_PIN);
+    stepper2->setEnablePin(MOTOR2_ENABLE_PIN);
+    stepper2->setAutoEnable(true);
+    stepper2->setSpeedInHz(1);
+    stepper2->setAcceleration(MAX_ACCELERATION);
+    Serial.println("Motor Initialized");
 
 
     Serial.println("System Initialized. LQR control is active.");  
@@ -89,21 +107,18 @@ void loop() {
 
 
     // Map control inputs (torques) to motor speeds  
-    speed1 = speedFactor * calculateStepFrequency((u[0] + u[1]) / 2);  
-    speed2 = speedFactor * calculateStepFrequency((u[0] - u[1]) / 2);
+    speed1 = speedFactor * rpm2sps((u[0] + u[1]) / 2);  
+    speed2 = speedFactor * rpm2sps((u[0] - u[1]) / 2);
+    
 
-    speed1 = constraint(speed1, -MAX_SPEED_RPM, MAX_SPEED_RPM);
-    speed2 = constraint(speed2, -MAX_SPEED_RPM, MAX_SPEED_RPM);
-
-    Serial.println(speed1);
-    Serial.println(speed2);
+    speed1 = constrain(speed1, -MAX_SPEED_RPM, MAX_SPEED_RPM);
+    speed2 = constrain(speed2, -MAX_SPEED_RPM, MAX_SPEED_RPM);
 
 
     // Control Motor 1  
     if (speed1 > 0) {  
         stepper1->setSpeedInHz(speed1);  
         stepper1->runForward();
-        Serial.println("Motor 1 Forward");  
     } else {  
         stepper1->setSpeedInHz(speed1);  
         stepper1->runBackward();  
@@ -140,28 +155,17 @@ void updateStateVector() {
     imu.update();  
     x[0] = imu.getRoll();       // Tilt angle (alpha)
     x[1] = imu.getRollRate();   // Tilt angular velocity (alpha_dot) 
-    Serial.println(x[1]);
     x[2] = 0;                   // Forward velocity (v) - Placeholder  
-    Serial.println(x[2]);
     x[3] = imu.getYaw();        // Heading angle (theta)  
     x[4] = imu.getYawRate();    // Heading angular velocity (theta_dot) 
 
 }  
 
-float calculateStepFrequency(float speedRPM) {  
+float rpm2sps(float speedRPM) {  
     return (speedRPM * STEPS_PER_REV * MICROSTEPS) / 60.0;  
 }  
 
 
-float constraint(float value, float min, float max) {  
-    if (value < min) {  
-        return min;  
-    } else if (value > max) {  
-        return max;  
-    } else {  
-        return value;  
-    }  
-}
 
 float getCurrentSpeedInMPS(FastAccelStepper* stepper1, FastAccelStepper* stepper2) {  
 
