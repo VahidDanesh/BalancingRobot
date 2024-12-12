@@ -33,7 +33,7 @@ IMUHandler& imu = IMUHandler::getInstance();
 
 void printAlignedValue(const char* label, float value, int width);
 void processSerialCommands();
-uint32_t calculateStepFrequency(uint32_t rpm);
+uint32_t rpm2sps(uint32_t rpm);
 
 
 
@@ -63,7 +63,7 @@ void setup() {
 void loop() {  
     if (stepper1) {  
         // Calculate step frequency for the desired speed  
-        stepFrequency = calculateStepFrequency(MAX_SPEED_RPM);  // Calculate step frequency for the desired speed
+        stepFrequency = rpm2sps(MAX_SPEED_RPM);  // Calculate step frequency for the desired speed
 
 
         // Run the motor in one direction for 5 seconds  
@@ -92,7 +92,7 @@ void printAlignedValue(const char* label, float value, int width) {
 }
 
 // Function to calculate step frequency based on RPM
-uint32_t calculateStepFrequency(uint32_t rpm) {
+uint32_t rpm2sps(uint32_t rpm) {
     return (rpm * STEPS_PER_REV * MICROSTEPS) / 60.0 * 16;
 }
 

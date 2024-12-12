@@ -10,7 +10,7 @@
 
 
 
-uint8_t controlMode = PID_POS; // Default to angle+position control  
+uint8_t controlMode = PID_ANGLE; // Default to angle+position control  
 
 // PID tuning parameters  
 float Kp_angle = 5.0, Ki_angle = 1.0, Kd_angle = 0.5;  
@@ -43,7 +43,7 @@ void setupWiFi();
 void setupWebServer();  
 void handleWebRequests();  
 void processSerialCommands();  
-uint32_t calculateStepFrequency(uint32_t rpm);
+uint32_t rpm2sps(uint32_t rpm);
 void updateControlMode();  
 
 void setup() {  
@@ -112,12 +112,12 @@ void loop() {
 
     // Update IMU data  
     imu.update();  
-    input_angle = imu.getRoll();  
+    input_angle = imu.getRoll() * RAD_TO_DEG;  
 
     // Emergency stop if tilt angle exceeds safety limits  
     if (abs(input_angle) > EMERGENCY_STOP_ANGLE) {  
-        stepper1->setSpeedInHz(0);  
-        stepper2->setSpeedInHz(0);  
+        stepper1->setSpeedInHz(0);
+        stepper2->setSpeedInHz(0);
         Serial.println("Emergency Stop: Tilt angle exceeded safety limits!");  
         return;  
     }  
@@ -128,9 +128,9 @@ void loop() {
     // Print data for debugging  
     Serial.print("Control Mode: ");  
     Serial.print(controlMode);  
-    Serial.print(", Input Angle: ");  
+    Serial.print(", Input: ");  
     Serial.print(input_angle);  
-    Serial.print(", Output Angle: ");  
+    Serial.print(", Output: ");  
     Serial.println(output_angle);  
 
     delay(10); // Adjust loop frequency as needed  
@@ -140,9 +140,17 @@ void updateControlMode() {
     switch (controlMode) {  
         case PID_ANGLE:  
             // Angle-only control  
-            pid_angle.Compute();  
-            stepper1->setSpeedInHz(calculateStepFrequency(abs(output_angle)));  
-            stepper2->setSpeedInHz(calculateStepFrequency(abs(output_angle)));  
+            pid_angle.Compute();
+            output_angle = constrain(output_angle, -MAX_SPEED_RPM, MAX_SPEED_RPM) * RAD_TO_DEG;
+            stepper1->setSpeedInHz(rpm2sps(abs(output_angle)));  
+            stepper2->setSpeedInHz(rpm2sps(abs(output_angle)));
+            if (output_angle < 0) {
+                stepper1->runForward();
+                stepper2->runBackward();
+            } else {
+                stepper1->runBackward();
+                stepper2->runForward();
+            }   
             break;  
 
         case PID_POS:  
@@ -150,8 +158,8 @@ void updateControlMode() {
             pid_pos.Compute();  
             setpoint_angle = output_pos; // Position controller sets tilt angle  
             pid_angle.Compute();  
-            stepper1->setSpeedInHz(calculateStepFrequency(abs(output_angle)));  
-            stepper2->setSpeedInHz(calculateStepFrequency(abs(output_angle)));  
+            stepper1->setSpeedInHz(rpm2sps(abs(output_angle)));  
+            stepper2->setSpeedInHz(rpm2sps(abs(output_angle)));  
             break;  
 
         case PID_SPEED:  
@@ -159,13 +167,13 @@ void updateControlMode() {
             pid_speed.Compute();  
             setpoint_angle = output_speed; // Speed controller sets tilt angle  
             pid_angle.Compute();  
-            stepper1->setSpeedInHz(calculateStepFrequency(abs(output_angle)));  
-            stepper2->setSpeedInHz(calculateStepFrequency(abs(output_angle)));  
+            stepper1->setSpeedInHz(rpm2sps(abs(output_angle)));  
+            stepper2->setSpeedInHz(rpm2sps(abs(output_angle)));  
             break;  
     }  
 }  
 
-uint32_t calculateStepFrequency(uint32_t rpm) {  
+uint32_t rpm2sps(uint32_t rpm) {  
     return (rpm * STEPS_PER_REV * MICROSTEPS) / 60.0;  
 }  
 

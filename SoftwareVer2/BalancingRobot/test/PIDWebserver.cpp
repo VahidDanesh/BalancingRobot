@@ -43,7 +43,7 @@ void setupWiFi();
 void setupWebServer();  
 void handleWebRequests();  
 void processSerialCommands();  
-uint32_t calculateStepFrequency(uint32_t rpm);
+uint32_t rpm2sps(uint32_t rpm);
 void initMotor(FastAccelStepper* stepper, uint8_t stepPin, uint8_t dirPin, uint8_t enablePin);  
 void updateControlMode();  
 
@@ -119,8 +119,8 @@ void updateControlMode() {
         case PID_ANGLE:  
             // Angle-only control  
             pid_angle.Compute();  
-            stepper1->setSpeedInHz(calculateStepFrequency(abs(output_angle)));  
-            stepper2->setSpeedInHz(calculateStepFrequency(abs(output_angle)));  
+            stepper1->setSpeedInHz(rpm2sps(abs(output_angle)));  
+            stepper2->setSpeedInHz(rpm2sps(abs(output_angle)));  
             break;  
 
         case PID_POS:  
@@ -128,8 +128,8 @@ void updateControlMode() {
             pid_pos.Compute();  
             setpoint_angle = output_pos; // Position controller sets tilt angle  
             pid_angle.Compute();  
-            stepper1->setSpeedInHz(calculateStepFrequency(abs(output_angle)));  
-            stepper2->setSpeedInHz(calculateStepFrequency(abs(output_angle)));  
+            stepper1->setSpeedInHz(rpm2sps(abs(output_angle)));  
+            stepper2->setSpeedInHz(rpm2sps(abs(output_angle)));  
             break;  
 
         case PID_SPEED:  
@@ -137,13 +137,13 @@ void updateControlMode() {
             pid_speed.Compute();  
             setpoint_angle = output_speed; // Speed controller sets tilt angle  
             pid_angle.Compute();  
-            stepper1->setSpeedInHz(calculateStepFrequency(abs(output_angle)));  
-            stepper2->setSpeedInHz(calculateStepFrequency(abs(output_angle)));  
+            stepper1->setSpeedInHz(rpm2sps(abs(output_angle)));  
+            stepper2->setSpeedInHz(rpm2sps(abs(output_angle)));  
             break;  
     }  
 }  
 
-uint32_t calculateStepFrequency(uint32_t rpm) {  
+uint32_t rpm2sps(uint32_t rpm) {  
     return (rpm * STEPS_PER_REV * MICROSTEPS) / 60.0;  
 }  
 

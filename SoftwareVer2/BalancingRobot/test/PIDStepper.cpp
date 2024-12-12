@@ -32,7 +32,7 @@ IMUHandler& imu = IMUHandler::getInstance();
 
 void printAlignedValue(const char* label, float value, int width);
 void processSerialCommands();
-float calculateStepFrequency(float rpm);
+float rpm2sps(float rpm);
 
 void setup() {
     Serial.begin(115200);
@@ -53,7 +53,7 @@ void setup() {
     stepper1->setDirectionPin(MOTOR1_DIR_PIN);
     stepper1->setEnablePin(MOTOR1_ENABLE_PIN);
     stepper1->setAutoEnable(true);
-    stepper1->setSpeedInHz(calculateStepFrequency(MAX_SPEED_RPM));
+    stepper1->setSpeedInHz(rpm2sps(MAX_SPEED_RPM));
     stepper1->setAcceleration(ACCELERATION);
 
     // Configure Motor 2
@@ -65,7 +65,7 @@ void setup() {
     stepper2->setDirectionPin(MOTOR2_DIR_PIN);
     stepper2->setEnablePin(MOTOR2_ENABLE_PIN);
     stepper2->setAutoEnable(true);
-    stepper2->setSpeedInHz(calculateStepFrequency(MAX_SPEED_RPM));
+    stepper2->setSpeedInHz(rpm2sps(MAX_SPEED_RPM));
     stepper2->setAcceleration(ACCELERATION);
 
     // Initialize PID controllers
@@ -95,10 +95,10 @@ void loop() {
     // Control Motor 1
     if (output1 > 0) {
         stepper1->runForward();
-        stepper1->setSpeedInHz(calculateStepFrequency(output1));
+        stepper1->setSpeedInHz(rpm2sps(output1));
     } else if (output1 < 0) {
         stepper1->runBackward();
-        stepper1->setSpeedInHz(-calculateStepFrequency(output1));
+        stepper1->setSpeedInHz(-rpm2sps(output1));
     } else {
         stepper1->stopMove();
     }
@@ -106,10 +106,10 @@ void loop() {
     // Control Motor 2
     if (output2 > 0) {
         stepper2->runForward();
-        stepper2->setSpeedInHz(calculateStepFrequency(output2));
+        stepper2->setSpeedInHz(rpm2sps(output2));
     } else if (output2 < 0) {
         stepper2->runBackward();
-        stepper2->setSpeedInHz(-calculateStepFrequency(output2));
+        stepper2->setSpeedInHz(-rpm2sps(output2));
     } else {
         stepper2->stopMove();
     }
@@ -149,7 +149,7 @@ void printAlignedValue(const char* label, float value, int width) {
 }
 
 // Function to calculate step frequency based on RPM
-float calculateStepFrequency(float rpm) {
+float rpm2sps(float rpm) {
     return (rpm * STEPS_PER_REV * MICROSTEPS) / 60.0;
 }
 
