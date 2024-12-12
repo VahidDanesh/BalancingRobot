@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PID Tuning</title>
+    <script>
+        async function updatePID(pidType) {
+            const params = {
+                [`Kp_${pidType}`]: document.getElementById(`Kp_${pidType}`).value,
+                [`Ki_${pidType}`]: document.getElementById(`Ki_${pidType}`).value,
+                [`Kd_${pidType}`]: document.getElementById(`Kd_${pidType}`).value
+            };
+
+            const urlParams = new URLSearchParams(params);
+            const response = await fetch(`/pid?type=${pidType}&` + urlParams.toString(), {
+                method: 'POST'
+            });
+
+            if (response.ok) {
+                alert(`${pidType.toUpperCase()} PID values updated successfully!`);
+            } else {
+                alert(`Failed to update ${pidType.toUpperCase()} PID values.`);
+            }
+        }
+    </script>
+</head>
+<body>
+    <h1>PID Tuning</h1>
+
+    <div>
+        <h2>Angle PID</h2>
+        <label for="Kp_angle">Kp:</label>
+        <input type="number" id="Kp_angle" step="0.01">
+        <label for="Ki_angle">Ki:</label>
+        <input type="number" id="Ki_angle" step="0.01">
+        <label for="Kd_angle">Kd:</label>
+        <input type="number" id="Kd_angle" step="0.01">
+        <button onclick="updatePID('angle')">Update Angle PID</button>
+    </div>
+
+    <div>
+        <h2>Position PID</h2>
+        <label for="Kp_pos">Kp:</label>
+        <input type="number" id="Kp_pos" step="0.01">
+        <label for="Ki_pos">Ki:</label>
+        <input type="number" id="Ki_pos" step="0.01">
+        <label for="Kd_pos">Kd:</label>
+        <input type="number" id="Kd_pos" step="0.01">
+        <button onclick="updatePID('pos')">Update Position PID</button>
+    </div>
+
+    <div>
+        <h2>Speed PID</h2>
+        <label for="Kp_speed">Kp:</label>
+        <input type="number" id="Kp_speed" step="0.01">
+        <label for="Ki_speed">Ki:</label>
+        <input type="number" id="Ki_speed" step="0.01">
+        <label for="Kd_speed">Kd:</label>
+        <input type="number" id="Kd_speed" step="0.01">
+        <button onclick="updatePID('speed')">Update Speed PID</button>
+    </div>
+
+    <a href="/">Back to Home</a>
+</body>
+</html>

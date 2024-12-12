@@ -13,7 +13,7 @@
 uint8_t controlMode = PID_ANGLE; // Default to angle+position control  
 
 // PID tuning parameters  
-float Kp_angle = 5.0, Ki_angle = 0.0, Kd_angle = 0.5;  
+float Kp_angle = 5.0, Ki_angle = 0.0, Kd_angle = 0.3;  
 float Kp_pos = 2.0, Ki_pos = 0.5, Kd_pos = 0.1;  
 float Kp_speed = 3.0, Ki_speed = 0.8, Kd_speed = 0.2;  
 
@@ -23,9 +23,9 @@ float input_pos = 0, output_pos = 0, setpoint_pos = 0;
 float input_speed = 0, output_speed = 0, setpoint_speed = 0;  
 
 // PID instances  
-PID pid_angle(&input_angle, &output_angle, &setpoint_angle, Kp_angle, Ki_angle, Kd_angle, REVERSE); 
-PID pid_pos(&input_pos, &output_pos, &setpoint_pos, Kp_pos, Ki_pos, Kd_pos, REVERSE);  
-PID pid_speed(&input_speed, &output_speed, &setpoint_speed, Kp_speed, Ki_speed, Kd_speed, REVERSE);  
+PID pid_angle(&input_angle, &output_angle, &setpoint_angle, Kp_angle, Ki_angle, Kd_angle, 1, REVERSE); 
+PID pid_pos(&input_pos, &output_pos, &setpoint_pos, Kp_pos, Ki_pos, Kd_pos, 1, REVERSE);  
+PID pid_speed(&input_speed, &output_speed, &setpoint_speed, Kp_speed, Ki_speed, Kd_speed, 1, REVERSE);  
 
 // Stepper instances  
 FastAccelStepperEngine engine;  
@@ -166,7 +166,7 @@ void updateControlMode() {
             output_angle = constrain(output_angle, -MAX_SPEED_RPM, MAX_SPEED_RPM);
             stepper1->setSpeedInHz(rpm2sps(abs(output_angle)));
             stepper2->setSpeedInHz(rpm2sps(abs(output_angle)));
-            if (output_angle < 0) {
+            if (output_angle > 0) {
                 stepper1->runForward();
                 stepper2->runBackward();
             } else {
@@ -183,7 +183,7 @@ void updateControlMode() {
             output_angle = constrain(output_angle, -MAX_SPEED_RPM, MAX_SPEED_RPM);
             stepper1->setSpeedInHz(rpm2sps(abs(output_angle)));
             stepper2->setSpeedInHz(rpm2sps(abs(output_angle)));
-            if (output_angle < 0) {
+            if (output_angle > 0) {
                 stepper1->runForward();
                 stepper2->runBackward();
             } else {
