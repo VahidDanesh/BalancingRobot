@@ -150,7 +150,7 @@ void printAlignedValue(const char* label, float value, int width) {
 
 // Function to calculate step frequency based on RPM
 float calculateStepFrequency(float rpm) {
-    return (rpm * STEPS_PER_REV * MICROSTEPPING) / 60.0;
+    return (rpm * STEPS_PER_REV * MICROSTEPS) / 60.0;
 }
 
 // Function to process Serial commands for PID tuning

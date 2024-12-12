@@ -36,8 +36,8 @@ float x[5] = {0, 0, 0, 0, 0}; // [alpha, alpha_dot, v, theta, theta_dot]
 float wr[5] = {0, 0, 0, 0, 0}; // Reference state vector  
 float u[2] = {0, 0};          // Control inputs [u1, u2] 
 float speed1 = 0, speed2 = 0; // Motor speeds in Hz
-float scaleFactor = 1.0f; // Speed scaling factor
-float acc1 = 0, acc2 = 0; // Acceleration values for motors
+float scaleFactor = 0.1f; // Speed scaling factor
+float acc1 = 0, acc2 = 0, torque1 = 0, torque2 = 0; // Acceleration values for motors
 bool setSpeed = false; // Flag to set speed only once
 
 
@@ -116,14 +116,18 @@ void loop() {
         u[1] += -K[1][i] * (x[i] - wr[i]);  
     }  
 
-    acc1 = (u[0] + u[1]) / 2; // Acceleration for motor 1 [rad/s^2]
-    acc2 = (u[0] - u[1]) / 2; // Acceleration for motor 2 [rad/s^2]
+    torque1 = (u[0] + u[1]) / 2; // torque for motor 1 [N.m]
+    torque2 = (u[0] - u[1]) / 2; // torque for motor 2 [N.m]
 
-    acc1 = scaleFactor * rpss2spss(acc1); // Convert to steps/s^2
-    acc2 = scaleFactor * rpss2spss(acc2); // Convert to steps/s^2
+    // torque1 = constraint(torque1, -0.45, 0.45); // torque limit for motor 1
+    // torque2 = constraint(torque2, -0.45, 0.45); // torque limit for motor 2
 
-    acc1 = constraint(acc1, -MAX_ACCELERATION, MAX_ACCELERATION);
-    acc2 = constraint(acc2, -MAX_ACCELERATION, MAX_ACCELERATION);
+
+    acc1 = scaleFactor * rpss2spss(torque1/0.007f); // Convert to steps/s^2
+    acc2 = scaleFactor * rpss2spss(torque2/0.007f); // Convert to steps/s^2
+
+    acc1 = constrain(acc1, -MAX_ACCELERATION, MAX_ACCELERATION);
+    acc2 = constrain(acc2, -MAX_ACCELERATION, MAX_ACCELERATION);
 
 
 
@@ -194,7 +198,7 @@ void updateStateVector() {
     imu.update();  
     x[0] = imu.getRoll();       // Tilt angle (alpha)
     x[1] = imu.getRollRate();   // Tilt angular velocity (alpha_dot) 
-    x[2] = getCurrentSpeedInMPS(stepper1, stepper2);                   // Forward velocity (v) m/s - Placeholder  
+    x[2] = getCurrentSpeedInMPS(stepper1, stepper2)*0;                   // Forward velocity (v) m/s - Placeholder  
     x[3] = imu.getYaw();        // Heading angle (theta)  
     x[4] = imu.getYawRate();    // Heading angular velocity (theta_dot) 
 }  

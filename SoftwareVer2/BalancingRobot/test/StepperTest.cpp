@@ -93,7 +93,7 @@ void printAlignedValue(const char* label, float value, int width) {
 
 // Function to calculate step frequency based on RPM
 uint32_t calculateStepFrequency(uint32_t rpm) {
-    return (rpm * STEPS_PER_REV * MICROSTEPPING) / 60.0 * 16;
+    return (rpm * STEPS_PER_REV * MICROSTEPS) / 60.0 * 16;
 }
 
 // Function to process Serial commands for PID tuning
