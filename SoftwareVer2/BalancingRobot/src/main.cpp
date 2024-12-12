@@ -22,17 +22,19 @@ IMUHandler& imu = IMUHandler::getInstance();
 float x[5] = {0, 0, 0, 0, 0}; // [alpha, alpha_dot, v, theta, theta_dot]
 float wr[5] = {0, 0, 0, 0, 0}; // Reference state vector  
 float u[2] = {0, 0};          // Control inputs [u1, u2] 
-float speed1 = 0, speed2 = 0; // Motor speeds in Hz 
+float speed1 = 0, speed2 = 0, filteredSpeed1 = 0, filteredSpeed2 = 0, filteredAvgSpeed = 0; // Motor speeds in Hz 
+float alpha = 0.996;            // Complementary filter factor
+float lastTime = 0;             // Last time for debugging
 
 
 // LQR Gain Matrix (precomputed)  
 float K[2][5] = {  
-    {-75.0848, -3.3575, 3.1623, 0.0000, 0.0000},  
+    {-847.4652, -116.2684, -10.0000, 0.0000, 0.0000},  
     {0.0000, 0.0000, 0.0000, 0.0000, 0.0000}  
 };  
 
 
-float speedFactor = 600.0f; // Speed scaling factor
+float speedFactor = 10.0f; // Speed scaling factor
 
 
 
@@ -92,6 +94,7 @@ void setup() {
 }  
 
 void loop() {  
+    
     // Process Serial commands  
     processSerialCommands(); 
 
@@ -108,49 +111,71 @@ void loop() {
     }  
 
 
+    // Get current speed measurements in milliHz
+    float lastSpeed1 = stepper1->getCurrentSpeedInMilliHz() / 1000;
+    float lastSpeed2 = stepper2->getCurrentSpeedInMilliHz() / 1000;
+
+    float lastAvgSpeed = (lastSpeed1 - lastSpeed2) / 2;
+
 
     // Map control inputs (torques) to motor speeds  
-    speed1 = speedFactor * rpm2sps((u[0] + u[1]) / 2);  
-    speed2 = speedFactor * rpm2sps((u[0] - u[1]) / 2);
-    
+    speed1 = rpm2sps(speedFactor * ((u[0] + u[1]) / 2));  
+    speed2 = rpm2sps(speedFactor * ((u[0] - u[1]) / 2));
 
-    speed1 = constrain(speed1, -MAX_SPEED_RPM, MAX_SPEED_RPM);
-    speed2 = constrain(speed2, -MAX_SPEED_RPM, MAX_SPEED_RPM);
+    float avgSpeed = (speed1 + speed2) / 2;
 
+    // Apply complementary filter
+    // filteredSpeed1 = alpha * speed1 + (1 - alpha) * lastSpeed1;
+    // filteredSpeed2 = alpha * speed2 + (1 - alpha) * lastSpeed2;  
+
+    // filteredSpeed1 = constrain(filteredSpeed1, -MAX_SPEED, MAX_SPEED);
+    // filteredSpeed2 = constrain(filteredSpeed2, -MAX_SPEED, MAX_SPEED);
+
+    filteredAvgSpeed = alpha * avgSpeed + (1 - alpha) * lastAvgSpeed;
+
+    filteredAvgSpeed = constrain(filteredAvgSpeed, -MAX_SPEED, MAX_SPEED);
+
+    stepper1->setSpeedInHz(abs(filteredAvgSpeed));
+    stepper2->setSpeedInHz(abs(filteredAvgSpeed));
 
     // Control Motor 1  
-    if (speed1 > 0) {  
-        stepper1->setSpeedInHz(speed1);  
+    if (filteredAvgSpeed > 0) { 
         stepper1->runForward();
-    } else {  
-        stepper1->setSpeedInHz(speed1);  
+        stepper2->runBackward();
+    } else {   
         stepper1->runBackward();  
+        stepper2->runForward();
     }  
 
-    // Control Motor 2  
-    if (speed2 > 0) {  
-        stepper2->setSpeedInHz(speed2);  
-        stepper2->runForward();  
-    } else {  
-        stepper2->setSpeedInHz(speed2);  
-        stepper2->runBackward();  
-    }  
+    float nowTime = millis();
+    float elapsedTime = nowTime - lastTime;
 
-    // Print state and control inputs for debugging  
-    Serial.print("State: ");  
-    for (int i = 0; i < 5; i++) {  
-        Serial.print(x[i]);  
-        Serial.print(" ");  
-    }  
-    // Print data for plotting
-    Serial.print("Input: ");
-    Serial.print(x[0]);
-    Serial.print(", Output1: ");
-    Serial.print(speed1);
-    Serial.print(", Output2: ");
-    Serial.println(speed2);
+    if (elapsedTime > 1000) {
 
-    delay(10); // Loop frequency  
+
+        // Print state and control inputs for debugging  
+        Serial.print("State: ");  
+        for (int i = 0; i < 5; i++) {  
+            Serial.print(x[i]);  
+            Serial.print(" ");  
+        }  
+        // Print data for plotting
+        Serial.print("Input: ");
+        Serial.print(x[0]);
+        Serial.print(", Output1: ");
+        Serial.println(filteredAvgSpeed);
+
+        lastTime = nowTime;
+    }
+
+    if (abs(x[0] * RAD_TO_DEG) > 45) {
+        stepper1->stopMove();
+        stepper2->stopMove();
+        Serial.println("Emergency Stop: Tilt angle exceeded safety limits!");
+        return;
+    }
+    
+    delay(20); // Loop frequency  
 }  
 
 void updateStateVector() {  
@@ -158,7 +183,7 @@ void updateStateVector() {
     imu.update();  
     x[0] = imu.getRoll();       // Tilt angle (alpha)
     x[1] = imu.getRollRate();   // Tilt angular velocity (alpha_dot) 
-    x[2] = 0;                   // Forward velocity (v) - Placeholder  
+    x[2] = getCurrentSpeedInMPS(stepper1, stepper2);                   // Forward velocity (v) - Placeholder  
     x[3] = imu.getYaw();        // Heading angle (theta)  
     x[4] = imu.getYawRate();    // Heading angular velocity (theta_dot) 
 
@@ -182,7 +207,7 @@ float getCurrentSpeedInMPS(FastAccelStepper* stepper1, FastAccelStepper* stepper
     int32_t mot2Speed = stepper2->getCurrentSpeedInMilliHz();
 
 
-    float speed = (mot1Speed + mot2Speed) / 2.0;
+    float speed = (mot1Speed - mot2Speed) / 2.0;
 
 
     // convert the speed of stepper in us to m/s using wheelRadius
@@ -214,11 +239,17 @@ void processSerialCommands() {
         String command = Serial.readStringUntil('\n');  
         command.trim();  
 
-        if (command.startsWith("Kp")) {  
-            speedFactor = command.substring(2).toFloat();  
+        if (command.startsWith("k")) {  
+            speedFactor = command.substring(1).toFloat();  
   
             Serial.print("Updated speedFactor: ");  
             Serial.println(speedFactor);  
+        }
+        if (command.startsWith("a")) {  
+            alpha = command.substring(1).toFloat();  
+  
+            Serial.print("Updated alpha: ");  
+            Serial.println(alpha);  
         }
 
     }  
