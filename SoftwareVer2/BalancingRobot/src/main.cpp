@@ -2,6 +2,7 @@
 #include <FastAccelStepper.h>  
 #include <PID_v1.h>  
 #include <WiFi.h>  
+#include <ESPmDNS.h>
 #include <ESPAsyncWebServer.h>  
 #include <AsyncTCP.h>  
 #include <SPIFFS.h>  
@@ -44,6 +45,7 @@ void setupWebServer();
 void handleWebRequests();  
 void processSerialCommands();  
 float rpm2sps(float rpm);
+float robotPos(FastAccelStepper* stepper1, FastAccelStepper* stepper2);
 void updateControlMode();  
 
 void setup() {  
@@ -71,7 +73,8 @@ void setup() {
     stepper1->setDirectionPin(MOTOR1_DIR_PIN);  
     stepper1->setEnablePin(MOTOR1_ENABLE_PIN);  
     stepper1->setAutoEnable(true);  
-    stepper1->setSpeedInHz(0);  
+    stepper1->setSpeedInHz(1);  
+    stepper1-> setCurrentPosition(0);
     stepper1->setAcceleration(MAX_ACCELERATION);  
     Serial.println("Motor Initialized");
 
@@ -83,7 +86,8 @@ void setup() {
     stepper2->setDirectionPin(MOTOR2_DIR_PIN);
     stepper2->setEnablePin(MOTOR2_ENABLE_PIN);
     stepper2->setAutoEnable(true);
-    stepper2->setSpeedInHz(0);
+    stepper2->setSpeedInHz(1);
+    stepper2->setCurrentPosition(0);
     stepper2->setAcceleration(MAX_ACCELERATION);
     Serial.println("Motor Initialized");
 
@@ -120,23 +124,23 @@ void loop() {
 
     // Emergency stop if tilt angle exceeds safety limits  
     if (abs(input_angle) > EMERGENCY_STOP_ANGLE) {  
-        stepper1->setSpeedInHz(0);
-        stepper2->setSpeedInHz(0);
+        stepper1->setSpeedInHz(1);
+        stepper2->setSpeedInHz(1);
         Serial.println("Emergency Stop: Tilt angle exceeded safety limits!");  
     }  
 
     // Update control mode  
     updateControlMode();  
 
-    // Print data for debugging  
-    Serial.print("Control Mode: ");  
-    Serial.print(controlMode);  
-    Serial.print(", Input: ");  
-    Serial.print(input_angle);  
-    Serial.print(", Output: ");  
-    Serial.println(output_angle);  
+    // // Print data for debugging  
+    // Serial.print("Control Mode: ");  
+    // Serial.print(controlMode);  
+    // Serial.print(", Input: ");  
+    // Serial.print(input_angle);  
+    // Serial.print(", Output: ");  
+    // Serial.println(output_angle);  
 
-    delay(10); // Adjust loop frequency as needed  
+    // delay(10); // Adjust loop frequency as needed  
 }  
 
 void updateControlMode() {
@@ -159,7 +163,12 @@ void updateControlMode() {
         case PID_POS:
             // Position control
             pid_speed.Compute();
-            setpoint_pos = output_speed;  // Speed controller sets position target
+            setpoint_pos = 0; //output_speed;  // Speed controller sets position target
+            input_pos = robotPos(stepper1, stepper2);
+            
+            Serial.print("Input Pos: ");
+            Serial.println(input_pos);
+
             pid_pos.Compute();
             setpoint_angle = output_pos; // Position controller sets angle target
             pid_angle.Compute();
@@ -198,6 +207,12 @@ float rpm2sps(float rpm) {
 }  
 
 
+float robotPos(FastAccelStepper* stepper1, FastAccelStepper* stepper2) {  
+    float motPos =  (stepper1->getCurrentPosition() - stepper2->getCurrentPosition()) / 2.0;
+    float pos = motPos / (STEPS_PER_REV * MICROSTEPS) * TWO_PI * WHEEL_RADIUS;
+    return pos;  
+}
+
 void processSerialCommands() {  
     if (Serial.available() > 0) {  
         String command = Serial.readStringUntil('\n');  
@@ -234,7 +249,15 @@ void setupWiFi() {
         delay(1000);  
         Serial.println("Connecting to WiFi...");  
     }  
-    Serial.println("Connected to WiFi!");  
+    Serial.print("Connected to WiFi! ");
+    Serial.println(WIFI_SSID);
+
+    if (MDNS.begin("robot")) {
+        Serial.println("Hostname set to: http://robot.local");
+    } else {
+        Serial.println("Error setting up MDNS responder!");
+    }
+
     Serial.print("IP Address: ");  
     Serial.println(WiFi.localIP());  
 }  
@@ -260,22 +283,100 @@ void setupWebServer() {
             Ki = request->getParam("Ki_angle", true)->value().toFloat();
             Kd = request->getParam("Kd_angle", true)->value().toFloat();
             pid_angle.SetTunings(Kp, Ki, Kd);
+
+            Serial.println("Angle PID values updated successfully");
+            Serial.print("[Kp, Ki, Kd] = [");
+            Serial.print(Kp);
+            Serial.print(", ");
+            Serial.print(Ki);
+            Serial.print(", ");
+            Serial.print(Kd);
+            Serial.println("]");
+
         } else if (pidType == "pos") {
             Kp = request->getParam("Kp_pos", true)->value().toFloat();
             Ki = request->getParam("Ki_pos", true)->value().toFloat();
             Kd = request->getParam("Kd_pos", true)->value().toFloat();
             pid_pos.SetTunings(Kp, Ki, Kd);
+
+            Serial.println("Position PID values updated successfully");
+            Serial.print("[Kp, Ki, Kd] = [");
+            Serial.print(Kp);
+            Serial.print(", ");
+            Serial.print(Ki);
+            Serial.print(", ");
+            Serial.print(Kd);
+            Serial.println("]");
+
         } else if (pidType == "speed") {
             Kp = request->getParam("Kp_speed", true)->value().toFloat();
             Ki = request->getParam("Ki_speed", true)->value().toFloat();
             Kd = request->getParam("Kd_speed", true)->value().toFloat();
             pid_speed.SetTunings(Kp, Ki, Kd);
+
+            Serial.println("Speed PID values updated successfully");
+            Serial.print("[Kp, Ki, Kd] = [");
+            Serial.print(Kp);
+            Serial.print(", ");
+            Serial.print(Ki);
+            Serial.print(", ");
+            Serial.print(Kd);
+            Serial.println("]");
+
+
         } else {
             request->send(400, "text/plain", "Invalid PID type");
             return;
         }
 
         request->send(200, "text/plain", "PID values updated successfully");
+    });
+
+    // Handle commands (e.g., movement)
+    server.on("/command", HTTP_GET, [](AsyncWebServerRequest* request) {
+        if (request->hasParam("cmd")) {
+            String command = request->getParam("cmd")->value();
+            if (command == "stop") {
+                // Handle stop logic set point v = 0 m/s
+                request->send(200, "text/plain", "Robot stopped");
+            } else if (command == "accelerate") {
+                // Handle accelerate logic increase setpoint v = 0.2 m/s
+                request->send(200, "text/plain", "Robot accelerating");
+            } else if (command == "decelerate") {
+                // Handle decelerate logic decrease setpoint v = 0.2 m/s
+                request->send(200, "text/plain", "Robot decelerating");
+            } else if (command == "left" || command == "right") {
+                // Handle turning logic add steer to speed
+                request->send(200, "text/plain", "Turning " + command);
+            } else {
+                request->send(400, "text/plain", "Invalid command");
+            }
+        } else {
+            request->send(400, "text/plain", "Missing command parameter");
+        }
+    });
+
+        // Handle mode changes
+    server.on("/mode", HTTP_GET, [](AsyncWebServerRequest* request) {
+        if (request->hasParam("set")) {
+            String mode = request->getParam("set")->value();
+            if (mode == "angle") {
+                controlMode = PID_ANGLE;
+                request->send(200, "text/plain", "Mode set to Angle");
+            } else if (mode == "pos") {
+                stepper1->setCurrentPosition(0);
+                stepper2->setCurrentPosition(0);
+                controlMode = PID_POS;
+                request->send(200, "text/plain", "Mode set to Position");
+            } else if (mode == "speed") {
+                controlMode = PID_SPEED;
+                request->send(200, "text/plain", "Mode set to Speed");
+            } else {
+                request->send(400, "text/plain", "Invalid mode");
+            }
+        } else {
+            request->send(400, "text/plain", "Missing mode parameter");
+        }
     });
 
     // Start the server  
