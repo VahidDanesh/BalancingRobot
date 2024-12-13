@@ -113,44 +113,51 @@
 
         /* PID Controls */
         .pid-controls {
-            padding: 20px;
-        }
-
-        .pid-input {
-            margin-bottom: 25px;
-        }
-
-        .pid-label {
             display: flex;
             justify-content: space-between;
-            align-items: center;
+            gap: 10px;
+        }
+        .pid-controls {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .pid-column {
+            flex: 1;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 10px;
+            background-color: #f9f9f9;
+        }
+
+        .pid-column h3 {
+            text-align: center;
+            color: #2c3e50;
             margin-bottom: 10px;
         }
 
-        .pid-label label {
+        .pid-input {
+            margin-bottom: 15px;
+        }
+
+        .pid-input label {
+            display: inline-block;
+            width: 50px;
             font-weight: bold;
             color: #2c3e50;
         }
 
-        .pid-label span {
-            background-color: #3498db;
-            color: white;
-            padding: 4px 8px;
-            border-radius: 4px;
-            min-width: 60px;
-            text-align: center;
-        }
-
         .slider {
             -webkit-appearance: none;
-            width: 100%;
+            width: 80%;
             height: 8px;
             border-radius: 4px;
             background: #d3d3d3;
             outline: none;
             opacity: 0.7;
-            -webkit-transition: .2s;
             transition: opacity .2s;
+            margin-left: 10px;
         }
 
         .slider:hover {
@@ -177,13 +184,26 @@
             box-shadow: 0 0 5px rgba(0,0,0,0.2);
         }
 
-        .slider-labels {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 5px;
-            color: #666;
+        .pid-label {
             font-size: 0.9em;
+            color: #666;
         }
+
+        button {
+            display: block;
+            margin: 10px auto;
+            padding: 10px 20px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #2980b9;
+        }
+
 
         .default-btn {
             background-color: #e74c3c;
@@ -229,6 +249,17 @@
             background-color: #f8f9fa;
             border-radius: 5px;
         }
+        .controller-selection {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .controller-selection select {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 1em;
+        }
     </style>
 </head>
 <body>
@@ -263,42 +294,45 @@
         <!-- PID Controls -->
         <div class="section">
             <h2>PID Controller</h2>
-            <div class="pid-controls">
-                <label for="pidType">Select PID Controller:</label>
-                <select id="pidType">
+            <!-- Controller Selection -->
+            <div class="section controller-selection">
+                <label for="controllerType">Select Controller Type:</label>
+                <select id="controllerType" onchange="updateControllerType()">
                     <option value="angle">Angle</option>
                     <option value="pos">Position</option>
                     <option value="speed">Speed</option>
                 </select>
+            </div>
+
+            <div class="pid-controls">
                 <script>
-                    // Generate PID controls dynamically from configuration
-                    Object.entries(CONFIG.pid).forEach(([param, config]) => {
+                    const pidTypes = ['angle', 'pos', 'speed'];
+                    pidTypes.forEach((pidType) => {
                         document.write(`
-                            <div class="pid-input">
-                                <div class="pid-label">
-                                    <label for="${param}">${param.toUpperCase().replace('K', '')} (${param.charAt(1).toUpperCase()}):</label>
-                                    <span id="${param}-value">${config.default.toFixed(2)}</span>
-                                </div>
-                                <input type="range" 
-                                    id="${param}" 
-                                    min="${config.min}" 
-                                    max="${config.max}" 
-                                    step="${config.step}" 
-                                    value="${config.default}" 
-                                    class="slider"
-                                    oninput="updatePIDValue(this, '${param}-value')">
-                                <div class="slider-labels">
-                                    <span>${config.min.toFixed(2)}</span>
-                                    <span>${config.default.toFixed(2)}</span>
-                                    <span>${config.max.toFixed(2)}</span>
-                                </div>
+                            <div class="pid-column">
+                                <h3>${pidType.charAt(0).toUpperCase() + pidType.slice(1)} Control</h3>
+                                ${Object.entries(CONFIG.pid).filter(([param]) => param.includes(pidType)).map(([param, config]) => `
+                                    <div class="pid-input">
+                                        <label for="${param}">${param.charAt(1).toUpperCase()}:</label>
+                                        <input type="range" 
+                                            id="${param}" 
+                                            min="${config.min}" 
+                                            max="${config.max}" 
+                                            step="${config.step}" 
+                                            value="${config.default}" 
+                                            class="slider"
+                                            oninput="updatePIDValue(this, '${param}-value')">
+                                        <span id="${param}-value">${config.default.toFixed(2)}</span>
+                                    </div>
+                                `).join('')}
                             </div>
                         `);
                     });
                 </script>
-                <button onclick="savePIDValues()">Save</button>
             </div>
+            <button onclick="savePIDValues()">Save</button>
         </div>
+
 
         <!-- Mode Selection -->
         <div class="section">
@@ -406,6 +440,11 @@
                 .catch((error) => {
                     alert(`Error: ${error.message}`);
                 });
+        }
+        
+        function updateControllerType() {
+            const controllerType = document.getElementById('controllerType').value;
+            updateStatus(`Controller type changed to: ${controllerType}`);
         }
 
 
