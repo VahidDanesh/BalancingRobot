@@ -246,22 +246,37 @@ void setupWebServer() {
         request->send(SPIFFS, "/index.html", "text/html");  
     });  
 
-    // Handle PID updates  
-    server.on("/pid", HTTP_POST, [](AsyncWebServerRequest* request) {  
-        if (request->hasParam("Kp_angle", true)) {  
-            Kp_angle = request->getParam("Kp_angle", true)->value().toFloat();  
-            pid_angle.SetTunings(Kp_angle, Ki_angle, Kd_angle);  
-        }  
-        if (request->hasParam("Ki_angle", true)) {  
-            Ki_angle = request->getParam("Ki_angle", true)->value().toFloat();  
-            pid_angle.SetTunings(Kp_angle, Ki_angle, Kd_angle);  
-        }  
-        if (request->hasParam("Kd_angle", true)) {  
-            Kd_angle = request->getParam("Kd_angle", true)->value().toFloat();  
-            pid_angle.SetTunings(Kp_angle, Ki_angle, Kd_angle);  
-        }  
-        request->send(200, "text/plain", "PID values updated");  
-    });  
+    server.on("/pid", HTTP_POST, [](AsyncWebServerRequest *request) {
+        if (!request->hasParam("type", true)) {
+            request->send(400, "text/plain", "Missing PID type parameter");
+            return;
+        }
+
+        String pidType = request->getParam("type", true)->value();
+        float Kp, Ki, Kd;
+
+        if (pidType == "angle") {
+            Kp = request->getParam("Kp_angle", true)->value().toFloat();
+            Ki = request->getParam("Ki_angle", true)->value().toFloat();
+            Kd = request->getParam("Kd_angle", true)->value().toFloat();
+            pid_angle.SetTunings(Kp, Ki, Kd);
+        } else if (pidType == "pos") {
+            Kp = request->getParam("Kp_pos", true)->value().toFloat();
+            Ki = request->getParam("Ki_pos", true)->value().toFloat();
+            Kd = request->getParam("Kd_pos", true)->value().toFloat();
+            pid_pos.SetTunings(Kp, Ki, Kd);
+        } else if (pidType == "speed") {
+            Kp = request->getParam("Kp_speed", true)->value().toFloat();
+            Ki = request->getParam("Ki_speed", true)->value().toFloat();
+            Kd = request->getParam("Kd_speed", true)->value().toFloat();
+            pid_speed.SetTunings(Kp, Ki, Kd);
+        } else {
+            request->send(400, "text/plain", "Invalid PID type");
+            return;
+        }
+
+        request->send(200, "text/plain", "PID values updated successfully");
+    });
 
     // Start the server  
     server.begin();  
