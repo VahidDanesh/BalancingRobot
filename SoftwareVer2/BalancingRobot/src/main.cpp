@@ -27,6 +27,8 @@ float input_pos = 0, output_pos = 0, setpoint_pos = 0;
 float input_speed = 0, output_speed = 0, setpoint_speed = 0;  
 
 float avgSpeedInput = 0, stepperLSpeed = 0, stepperRSpeed = 0, steer = 0;
+float filteredStepperLSpeed = 0, filteredStepperRSpeed = 0;
+float alphaSpeed = 0.9;
 
 // PID instances  
 PID pid_angle(&input_angle, &output_angle, &setpoint_angle, Kp_angle, Ki_angle, Kd_angle, 1, REVERSE); 
@@ -52,6 +54,7 @@ void processSerialCommands();
 float rpm2sps(float rpm);
 float getRobotPos(FastAccelStepper* stepperL, FastAccelStepper* stepperR);
 float getRobotSpeed(FastAccelStepper* stepperL, FastAccelStepper* stepperR);
+bool near(float a, float b, float tolerance);
 void setRobotSpeed(float stepperLSpeed, float stepperRSpeed);
 void updateControlMode();  
 
@@ -110,8 +113,8 @@ void setup() {
     // pid_speed.SetOutputLimits(-MAX_TILT_ANGLE, MAX_TILT_ANGLE);  
 
     pid_angle.SetSampleTime(5);  // 200 Hz 
-    pid_pos.SetSampleTime(10);  // 100 Hz
-    pid_speed.SetSampleTime(10);  // 100 Hz
+    pid_pos.SetSampleTime(100);  // 10 Hz
+    pid_speed.SetSampleTime(100);  // 10 Hz
 
     // Setup WiFi and Web Server  
     setupWiFi();  
@@ -127,23 +130,54 @@ void loop() {
 
     // Update IMU data  
     imu.update();  
-    input_angle = imu.getRoll();
+    input_angle = imu.getRoll() * RAD_TO_DEG;
     input_speed = getRobotSpeed(stepperL, stepperR);
-        // Update control mode  
+
+
+    // Update control mode  
     updateControlMode(); 
     stepperLSpeed = output_angle + steer;  // speed in rpm
     stepperRSpeed = output_angle - steer;  // speed in rpm
-    setRobotSpeed(stepperLSpeed, stepperRSpeed);  
+
+    // low-pass fileter for speed
+    filteredStepperLSpeed = alphaSpeed * filteredStepperLSpeed + (1 - alphaSpeed) * stepperLSpeed;
+    filteredStepperRSpeed = alphaSpeed * filteredStepperLSpeed + (1 - alphaSpeed) * stepperLSpeed;
+
+    if (near(steer, 0, 1)) {
+        filteredStepperLSpeed = filteredStepperRSpeed;
+    }
+    stepperL->setSpeedInHz(abs(rpm2sps(filteredStepperLSpeed)));
+    stepperR->setSpeedInHz(abs(rpm2sps(filteredStepperRSpeed)));
+
+    if (stepperLSpeed > 0){
+        stepperL->runForward();
+    } else {
+        stepperL->runBackward();
+    }
+    if (stepperRSpeed > 0){
+        stepperR->runBackward();
+    } else {
+        stepperR->runForward();
+    }
+ 
 
 
 
     unsigned long currentMillis = millis();
     if (currentMillis - previousMillis >= interval) {
         previousMillis = currentMillis;
+        Serial.print("Input: ");
+        Serial.print(input_angle);
+
+        Serial.print(", Output: ");
+        Serial.print(stepperLSpeed);
+        Serial.print(", ");
+        Serial.println(stepperRSpeed);
+
         // Emergency stop if tilt angle exceeds safety limits  
         if (abs(input_angle) > EMERGENCY_STOP_ANGLE) {  
-            stepperLSpeed = 1;
-            stepperRSpeed = 1;
+            stepperL->stopMove();
+            stepperR->stopMove();
             Serial.println("Emergency Stop: Tilt angle exceeded safety limits!");  
         }  
         if (WiFi.status() != WL_CONNECTED) {
@@ -228,14 +262,22 @@ float getRobotSpeed(FastAccelStepper* stepperL, FastAccelStepper* stepperR) {
     return speedInMPS;  
 }
 
+bool near(float value, float target, float tolerance) {
+    return abs(value - target) < tolerance;
+}
+
 void setRobotSpeed(float stepperLSpeed, float stepperRSpeed) {  
     stepperLSpeed = (rpm2sps(stepperLSpeed));
     stepperRSpeed = (rpm2sps(stepperRSpeed));
 
     if (!stepperL->setSpeedInHz(abs(stepperLSpeed))) {
         stepperL->stopMove();
+        Serial.println("Error setting speed for left motor!");
+        Serial.println(stepperLSpeed);
     } else if (!stepperR->setSpeedInHz(abs(stepperRSpeed))) {
         stepperR->stopMove();
+        Serial.println("Error setting speed for right motor!");
+        Serial.println(stepperRSpeed);
     }
 
     if (stepperLSpeed > 0){
@@ -383,7 +425,8 @@ void setupWebServer() {
             String command = request->getParam("cmd")->value();
             if (command == "stop") {
 
-                avgSpeedInput = 0;    
+                avgSpeedInput = 0;
+                steer = 0;    
                 request->send(200, "text/plain", "Robot stopped");
                 Serial.println("Robot stopped");
             } else if (command == "accelerate") {
