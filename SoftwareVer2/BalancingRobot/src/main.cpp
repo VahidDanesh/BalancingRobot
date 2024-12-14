@@ -26,7 +26,7 @@ float input_angle = 0, output_angle = 0, setpoint_angle = 0;
 float input_pos = 0, output_pos = 0, setpoint_pos = 0;  
 float input_speed = 0, output_speed = 0, setpoint_speed = 0;  
 
-float avgSpeed = 0;
+float avgSpeedInput = 0, stepperLSpeed = 0, stepperRSpeed = 0, steer = 0;
 
 // PID instances  
 PID pid_angle(&input_angle, &output_angle, &setpoint_angle, Kp_angle, Ki_angle, Kd_angle, 1, REVERSE); 
@@ -35,8 +35,8 @@ PID pid_speed(&input_speed, &output_speed, &setpoint_speed, Kp_speed, Ki_speed, 
 
 // Stepper instances  
 FastAccelStepperEngine engine;  
-FastAccelStepper* stepper1 = nullptr;  
-FastAccelStepper* stepper2 = nullptr;  
+FastAccelStepper* stepperL = nullptr;  
+FastAccelStepper* stepperR = nullptr;  
 
 // IMU instance  
 IMUHandler& imu = IMUHandler::getInstance();  
@@ -50,7 +50,9 @@ void setupWebServer();
 void handleWebRequests();  
 void processSerialCommands();  
 float rpm2sps(float rpm);
-float robotPos(FastAccelStepper* stepper1, FastAccelStepper* stepper2);
+float getRobotPos(FastAccelStepper* stepperL, FastAccelStepper* stepperR);
+float getRobotSpeed(FastAccelStepper* stepperL, FastAccelStepper* stepperR);
+void setRobotSpeed(float stepperLSpeed, float stepperRSpeed);
 void updateControlMode();  
 
 void setup() {  
@@ -70,30 +72,30 @@ void setup() {
     engine.init();
 
     // Initialize motors  
-    stepper1 = engine.stepperConnectToPin(MOTOR1_STEP_PIN);  
-    if (!stepper1) {  
+    stepperL = engine.stepperConnectToPin(MOTORL_STEP_PIN);  
+    if (!stepperL) {  
         Serial.println("Motor connection failed!");  
         while (1);  
     }  
-    stepper1->setDirectionPin(MOTOR1_DIR_PIN);  
-    stepper1->setEnablePin(MOTOR1_ENABLE_PIN);  
-    stepper1->setAutoEnable(true);  
-    stepper1->setSpeedInHz(1);  
-    stepper1-> setCurrentPosition(0);
-    stepper1->setAcceleration(MAX_ACCELERATION);  
+    stepperL->setDirectionPin(MOTORL_DIR_PIN);  
+    stepperL->setEnablePin(MOTORL_ENABLE_PIN);  
+    stepperL->setAutoEnable(true);  
+    stepperL->setSpeedInHz(1);  
+    stepperL-> setCurrentPosition(0);
+    stepperL->setAcceleration(MAX_ACCELERATION);  
     Serial.println("Motor Initialized");
 
-    stepper2 = engine.stepperConnectToPin(MOTOR2_STEP_PIN);
-    if (!stepper2) {
+    stepperR = engine.stepperConnectToPin(MOTORR_STEP_PIN);
+    if (!stepperR) {
         Serial.println("Motor connection failed!");
         while (1);
     }
-    stepper2->setDirectionPin(MOTOR2_DIR_PIN);
-    stepper2->setEnablePin(MOTOR2_ENABLE_PIN);
-    stepper2->setAutoEnable(true);
-    stepper2->setSpeedInHz(1);
-    stepper2->setCurrentPosition(0);
-    stepper2->setAcceleration(MAX_ACCELERATION);
+    stepperR->setDirectionPin(MOTORR_DIR_PIN);
+    stepperR->setEnablePin(MOTORR_ENABLE_PIN);
+    stepperR->setAutoEnable(true);
+    stepperR->setSpeedInHz(1);
+    stepperR->setCurrentPosition(0);
+    stepperR->setAcceleration(MAX_ACCELERATION);
     Serial.println("Motor Initialized");
 
 
@@ -104,8 +106,8 @@ void setup() {
     pid_speed.SetMode(AUTOMATIC);  
 
     pid_angle.SetOutputLimits(-MAX_SPEED_RPM, MAX_SPEED_RPM);  
-    pid_pos.SetOutputLimits(-MAX_TILT_ANGLE, MAX_TILT_ANGLE);  
-    pid_speed.SetOutputLimits(-MAX_TILT_ANGLE, MAX_TILT_ANGLE);  
+    // pid_pos.SetOutputLimits(-MAX_TILT_ANGLE, MAX_TILT_ANGLE);  
+    // pid_speed.SetOutputLimits(-MAX_TILT_ANGLE, MAX_TILT_ANGLE);  
 
     pid_angle.SetSampleTime(5);  // 200 Hz 
     pid_pos.SetSampleTime(10);  // 100 Hz
@@ -125,9 +127,13 @@ void loop() {
 
     // Update IMU data  
     imu.update();  
-    input_angle = imu.getRoll() * RAD_TO_DEG;
+    input_angle = imu.getRoll();
+    input_speed = getRobotSpeed(stepperL, stepperR);
         // Update control mode  
-    updateControlMode();   
+    updateControlMode(); 
+    stepperLSpeed = output_angle + steer;  // speed in rpm
+    stepperRSpeed = output_angle - steer;  // speed in rpm
+    setRobotSpeed(stepperLSpeed, stepperRSpeed);  
 
 
 
@@ -136,8 +142,8 @@ void loop() {
         previousMillis = currentMillis;
         // Emergency stop if tilt angle exceeds safety limits  
         if (abs(input_angle) > EMERGENCY_STOP_ANGLE) {  
-            stepper1->setSpeedInHz(1);
-            stepper2->setSpeedInHz(1);
+            stepperLSpeed = 1;
+            stepperRSpeed = 1;
             Serial.println("Emergency Stop: Tilt angle exceeded safety limits!");  
         }  
         if (WiFi.status() != WL_CONNECTED) {
@@ -147,6 +153,7 @@ void loop() {
         }
     }
 
+    
     // // Print data for debugging  
     // Serial.print("Control Mode: ");  
     // Serial.print(controlMode);  
@@ -162,57 +169,28 @@ void updateControlMode() {
     switch (controlMode) {
         case PID_ANGLE:
             // Angle-only control
+            setpoint_angle = avgSpeedInput;  // Speed controller sets angle target
             pid_angle.Compute();
-            output_angle = constrain(output_angle, -MAX_SPEED_RPM, MAX_SPEED_RPM);
-            stepper1->setSpeedInHz(rpm2sps(abs(output_angle)));
-            stepper2->setSpeedInHz(rpm2sps(abs(output_angle)));
-            if (output_angle > 0) {
-                stepper1->runForward();
-                stepper2->runBackward();
-            } else {
-                stepper1->runBackward();
-                stepper2->runForward();
-            }
             break;
 
         case PID_POS:
             // Position control
             pid_speed.Compute();
-            setpoint_pos = avgSpeed; //output_speed;  // Speed controller sets position target
-            input_pos = robotPos(stepper1, stepper2);
+            setpoint_pos = avgSpeedInput; //output_speed;  // Speed controller sets position target
+            input_pos = getRobotPos(stepperL, stepperR);
             
 
             pid_pos.Compute();
             setpoint_angle = output_pos; // Position controller sets angle target
             pid_angle.Compute();
-            output_angle = constrain(output_angle, -MAX_SPEED_RPM, MAX_SPEED_RPM);
-            stepper1->setSpeedInHz(rpm2sps(abs(output_angle)));
-            stepper2->setSpeedInHz(rpm2sps(abs(output_angle)));
-            if (output_angle > 0) {
-                stepper1->runForward();
-                stepper2->runBackward();
-            } else {
-                stepper1->runBackward();
-                stepper2->runForward();
-            }
             break;
 
         case PID_SPEED:
             // Speed control
-            input_speed = avgSpeed;
+            setpoint_speed = avgSpeedInput;  // Speed controller sets speed target
             pid_speed.Compute();
             setpoint_angle = output_speed;  // Speed controller sets angle target
             pid_angle.Compute();
-            output_angle = constrain(output_angle, -MAX_SPEED_RPM, MAX_SPEED_RPM);
-            stepper1->setSpeedInHz(rpm2sps(abs(output_angle)));
-            stepper2->setSpeedInHz(rpm2sps(abs(output_angle)));
-            if (output_angle > 0) {
-                stepper1->runForward();
-                stepper2->runBackward();
-            } else {
-                stepper1->runBackward();
-                stepper2->runForward();
-            }
             break;
     }
 }
@@ -221,11 +199,59 @@ float rpm2sps(float rpm) {
 }  
 
 
-float robotPos(FastAccelStepper* stepper1, FastAccelStepper* stepper2) {  
-    float motPos =  (stepper1->getCurrentPosition() - stepper2->getCurrentPosition()) / 2.0;
+float getRobotPos(FastAccelStepper* stepperL, FastAccelStepper* stepperR) {  
+    float motPos =  (stepperL->getCurrentPosition() - stepperR->getCurrentPosition()) / 2.0;
     float pos = motPos / (STEPS_PER_REV * MICROSTEPS) * TWO_PI * WHEEL_RADIUS;
     return pos;  
 }
+
+float getRobotSpeed(FastAccelStepper* stepperL, FastAccelStepper* stepperR) {  
+    // Check if the stepper pointers are valid  
+    if (stepperL == nullptr || stepperR == nullptr) {  
+        Serial.println("Error: Stepper motor not initialized!");  
+        return 0.0; 
+    } 
+
+    int32_t mot1Speed = stepperL->getCurrentSpeedInMilliHz();
+    int32_t mot2Speed = stepperR->getCurrentSpeedInMilliHz();
+
+
+    float speed = (mot1Speed - mot2Speed) / 2.0;
+
+
+    // convert the speed of stepper in us to m/s using wheelRadius
+    float speedInHZ = speed / 1000.0;
+    float speedInRPS = speedInHZ  / (STEPS_PER_REV * MICROSTEPS);
+    float speedInMPS = speedInRPS * TWO_PI *  WHEEL_RADIUS;
+
+
+    return speedInMPS;  
+}
+
+void setRobotSpeed(float stepperLSpeed, float stepperRSpeed) {  
+    stepperLSpeed = (rpm2sps(stepperLSpeed));
+    stepperRSpeed = (rpm2sps(stepperRSpeed));
+
+    if (!stepperL->setSpeedInHz(abs(stepperLSpeed))) {
+        stepperL->stopMove();
+    } else if (!stepperR->setSpeedInHz(abs(stepperRSpeed))) {
+        stepperR->stopMove();
+    }
+
+    if (stepperLSpeed > 0){
+        stepperL->runForward();
+    } else {
+        stepperL->runBackward();
+    }
+    if (stepperRSpeed > 0){
+        stepperR->runBackward();
+    } else {
+        stepperR->runForward();
+    }
+
+}
+
+
 
 void processSerialCommands() {  
     if (Serial.available() > 0) {  
@@ -357,21 +383,22 @@ void setupWebServer() {
             String command = request->getParam("cmd")->value();
             if (command == "stop") {
 
-                avgSpeed = 0;    
+                avgSpeedInput = 0;    
                 request->send(200, "text/plain", "Robot stopped");
                 Serial.println("Robot stopped");
             } else if (command == "accelerate") {
                 // Handle accelerate logic increase setpoint v = 0.2 m/s
-                avgSpeed += 0.2;
+                avgSpeedInput += 0.2;
                 request->send(200, "text/plain", "Robot accelerating");
                 Serial.println("Robot accelerating");
             } else if (command == "decelerate") {
                 // Handle decelerate logic decrease setpoint v = 0.2 m/s
-                avgSpeed -= 0.2;
+                avgSpeedInput -= 0.2;
                 request->send(200, "text/plain", "Robot decelerating");
                 Serial.println("Robot decelerating");
             } else if (command == "left" || command == "right") {
                 // Handle turning logic add steer to speed
+                steer = (command == "left") ? -10 : 10;
                 request->send(200, "text/plain", "Turning " + command);
                 Serial.println("Turning " + command);
             } else {
@@ -408,8 +435,8 @@ void setupWebServer() {
                 request->send(200, "text/plain", "Mode set to Angle");
                 Serial.println("Mode set to Angle");
             } else if (mode == "pos") {
-                stepper1->setCurrentPosition(0);
-                stepper2->setCurrentPosition(0);
+                stepperL->setCurrentPosition(0);
+                stepperR->setCurrentPosition(0);
                 controlMode = PID_POS;
                 request->send(200, "text/plain", "Mode set to Position");
                 Serial.println("Mode set to Position");

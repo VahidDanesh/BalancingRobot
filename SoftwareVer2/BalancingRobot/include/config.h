@@ -7,14 +7,14 @@
 
 // Pin Definitions
 // Motor 1
-#define MOTOR1_STEP_PIN 18
-#define MOTOR1_DIR_PIN 19
-#define MOTOR1_ENABLE_PIN 27
+#define MOTORL_STEP_PIN 18
+#define MOTORL_DIR_PIN 19
+#define MOTORL_ENABLE_PIN 27
 
 // Motor 2
-#define MOTOR2_STEP_PIN 25
-#define MOTOR2_DIR_PIN 26
-#define MOTOR2_ENABLE_PIN 14
+#define MOTORR_STEP_PIN 25
+#define MOTORR_DIR_PIN 26
+#define MOTORR_ENABLE_PIN 14
 
 // MPU6050 Pins
 #define MPU_SDA_PIN 21
@@ -65,3 +65,4 @@
 
 
 #define WHEEL_RADIUS 0.0325f
+#define ROBOT_WIDTH 0.27f

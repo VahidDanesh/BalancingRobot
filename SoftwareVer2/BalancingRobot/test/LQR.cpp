@@ -21,8 +21,8 @@ float K[2][5] = {
 float speedFactor = 600.0f; // Speed scaling factor
 // Stepper instances  
 FastAccelStepperEngine engine;  
-FastAccelStepper* stepper1 = nullptr;  
-FastAccelStepper* stepper2 = nullptr;  
+FastAccelStepper* stepperL = nullptr;  
+FastAccelStepper* stepperR = nullptr;  
 
 // IMU instance  
 IMUHandler& imu = IMUHandler::getInstance();  
@@ -60,28 +60,28 @@ void setup() {
 
     // Initialize stepper engine  
     engine.init();  
-    stepper1 = engine.stepperConnectToPin(MOTOR1_STEP_PIN);  
-    if (!stepper1) {  
+    stepperL = engine.stepperConnectToPin(MOTORL_STEP_PIN);  
+    if (!stepperL) {  
         Serial.println("Motor connection failed!");  
         while (1);  
     }  
-    stepper1->setDirectionPin(MOTOR1_DIR_PIN);  
-    stepper1->setEnablePin(MOTOR1_ENABLE_PIN);  
-    stepper1->setAutoEnable(true);  
-    stepper1->setSpeedInHz(1);  
-    stepper1->setAcceleration(MAX_ACCELERATION);  
+    stepperL->setDirectionPin(MOTORL_DIR_PIN);  
+    stepperL->setEnablePin(MOTORL_ENABLE_PIN);  
+    stepperL->setAutoEnable(true);  
+    stepperL->setSpeedInHz(1);  
+    stepperL->setAcceleration(MAX_ACCELERATION);  
     Serial.println("Motor Initialized");
 
-    stepper2 = engine.stepperConnectToPin(MOTOR2_STEP_PIN);
-    if (!stepper2) {
+    stepperR = engine.stepperConnectToPin(MOTORR_STEP_PIN);
+    if (!stepperR) {
         Serial.println("Motor connection failed!");
         while (1);
     }
-    stepper2->setDirectionPin(MOTOR2_DIR_PIN);
-    stepper2->setEnablePin(MOTOR2_ENABLE_PIN);
-    stepper2->setAutoEnable(true);
-    stepper2->setSpeedInHz(1);
-    stepper2->setAcceleration(MAX_ACCELERATION);
+    stepperR->setDirectionPin(MOTORR_DIR_PIN);
+    stepperR->setEnablePin(MOTORR_ENABLE_PIN);
+    stepperR->setAutoEnable(true);
+    stepperR->setSpeedInHz(1);
+    stepperR->setAcceleration(MAX_ACCELERATION);
     Serial.println("Motor Initialized");
 
 
@@ -117,20 +117,20 @@ void loop() {
 
     // Control Motor 1  
     if (speed1 > 0) {  
-        stepper1->setSpeedInHz(speed1);  
-        stepper1->runForward();
+        stepperL->setSpeedInHz(speed1);  
+        stepperL->runForward();
     } else {  
-        stepper1->setSpeedInHz(speed1);  
-        stepper1->runBackward();  
+        stepperL->setSpeedInHz(speed1);  
+        stepperL->runBackward();  
     }  
 
     // Control Motor 2  
     if (speed2 > 0) {  
-        stepper2->setSpeedInHz(speed2);  
-        stepper2->runForward();  
+        stepperR->setSpeedInHz(speed2);  
+        stepperR->runForward();  
     } else {  
-        stepper2->setSpeedInHz(speed2);  
-        stepper2->runBackward();  
+        stepperR->setSpeedInHz(speed2);  
+        stepperR->runBackward();  
     }  
 
     // Print state and control inputs for debugging  
@@ -167,16 +167,16 @@ float rpm2sps(float speedRPM) {
 
 
 
-float getCurrentSpeedInMPS(FastAccelStepper* stepper1, FastAccelStepper* stepper2) {  
+float getCurrentSpeedInMPS(FastAccelStepper* stepperL, FastAccelStepper* stepperR) {  
 
     // Check if the stepper pointers are valid  
-    if (stepper1 == nullptr || stepper2 == nullptr) {  
+    if (stepperL == nullptr || stepperR == nullptr) {  
         Serial.println("Error: Stepper motor not initialized!");  
         return 0.0; 
     } 
 
-    int32_t mot1Speed = stepper1->getCurrentSpeedInMilliHz();
-    int32_t mot2Speed = stepper2->getCurrentSpeedInMilliHz();
+    int32_t mot1Speed = stepperL->getCurrentSpeedInMilliHz();
+    int32_t mot2Speed = stepperR->getCurrentSpeedInMilliHz();
 
 
     float speed = (mot1Speed + mot2Speed) / 2.0;

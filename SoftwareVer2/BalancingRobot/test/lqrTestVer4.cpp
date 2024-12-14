@@ -12,8 +12,8 @@
 
 // Stepper instances  
 FastAccelStepperEngine engine;  
-FastAccelStepper* stepper1 = nullptr;  
-FastAccelStepper* stepper2 = nullptr;  
+FastAccelStepper* stepperL = nullptr;  
+FastAccelStepper* stepperR = nullptr;  
 
 // IMU instance  
 IMUHandler& imu = IMUHandler::getInstance();  
@@ -65,28 +65,28 @@ void setup() {
 
     // Initialize stepper engine  
     engine.init();  
-    stepper1 = engine.stepperConnectToPin(MOTOR1_STEP_PIN);  
-    if (!stepper1) {  
+    stepperL = engine.stepperConnectToPin(MOTORL_STEP_PIN);  
+    if (!stepperL) {  
         Serial.println("Motor connection failed!");  
         while (1);  
     }  
-    stepper1->setDirectionPin(MOTOR1_DIR_PIN);  
-    stepper1->setEnablePin(MOTOR1_ENABLE_PIN);  
-    stepper1->setAutoEnable(true);  
-    stepper1->setSpeedInHz(1);  
-    stepper1->setAcceleration(MAX_ACCELERATION);  
+    stepperL->setDirectionPin(MOTORL_DIR_PIN);  
+    stepperL->setEnablePin(MOTORL_ENABLE_PIN);  
+    stepperL->setAutoEnable(true);  
+    stepperL->setSpeedInHz(1);  
+    stepperL->setAcceleration(MAX_ACCELERATION);  
     Serial.println("Motor Initialized");
 
-    stepper2 = engine.stepperConnectToPin(MOTOR2_STEP_PIN);
-    if (!stepper2) {
+    stepperR = engine.stepperConnectToPin(MOTORR_STEP_PIN);
+    if (!stepperR) {
         Serial.println("Motor connection failed!");
         while (1);
     }
-    stepper2->setDirectionPin(MOTOR2_DIR_PIN);
-    stepper2->setEnablePin(MOTOR2_ENABLE_PIN);
-    stepper2->setAutoEnable(true);
-    stepper2->setSpeedInHz(1);
-    stepper2->setAcceleration(MAX_ACCELERATION);
+    stepperR->setDirectionPin(MOTORR_DIR_PIN);
+    stepperR->setEnablePin(MOTORR_ENABLE_PIN);
+    stepperR->setAutoEnable(true);
+    stepperR->setSpeedInHz(1);
+    stepperR->setAcceleration(MAX_ACCELERATION);
     Serial.println("Motor Initialized");
 
 
@@ -112,8 +112,8 @@ void loop() {
 
 
     // Get current speed measurements in milliHz
-    float lastSpeed1 = stepper1->getCurrentSpeedInMilliHz() / 1000;
-    float lastSpeed2 = stepper2->getCurrentSpeedInMilliHz() / 1000;
+    float lastSpeed1 = stepperL->getCurrentSpeedInMilliHz() / 1000;
+    float lastSpeed2 = stepperR->getCurrentSpeedInMilliHz() / 1000;
 
     float lastAvgSpeed = (lastSpeed1 - lastSpeed2) / 2;
 
@@ -135,16 +135,16 @@ void loop() {
 
     filteredAvgSpeed = constrain(filteredAvgSpeed, -MAX_SPEED, MAX_SPEED);
 
-    stepper1->setSpeedInHz(abs(filteredAvgSpeed));
-    stepper2->setSpeedInHz(abs(filteredAvgSpeed));
+    stepperL->setSpeedInHz(abs(filteredAvgSpeed));
+    stepperR->setSpeedInHz(abs(filteredAvgSpeed));
 
     // Control Motor 1  
     if (filteredAvgSpeed > 0) { 
-        stepper1->runForward();
-        stepper2->runBackward();
+        stepperL->runForward();
+        stepperR->runBackward();
     } else {   
-        stepper1->runBackward();  
-        stepper2->runForward();
+        stepperL->runBackward();  
+        stepperR->runForward();
     }  
 
     float nowTime = millis();
@@ -169,8 +169,8 @@ void loop() {
     }
 
     if (abs(x[0] * RAD_TO_DEG) > 45) {
-        stepper1->stopMove();
-        stepper2->stopMove();
+        stepperL->stopMove();
+        stepperR->stopMove();
         Serial.println("Emergency Stop: Tilt angle exceeded safety limits!");
         return;
     }
@@ -183,7 +183,7 @@ void updateStateVector() {
     imu.update();  
     x[0] = imu.getRoll();       // Tilt angle (alpha)
     x[1] = imu.getRollRate();   // Tilt angular velocity (alpha_dot) 
-    x[2] = getCurrentSpeedInMPS(stepper1, stepper2);                   // Forward velocity (v) - Placeholder  
+    x[2] = getCurrentSpeedInMPS(stepperL, stepperR);                   // Forward velocity (v) - Placeholder  
     x[3] = imu.getYaw();        // Heading angle (theta)  
     x[4] = imu.getYawRate();    // Heading angular velocity (theta_dot) 
 
@@ -195,16 +195,16 @@ float rpm2sps(float speedRPM) {
 
 
 
-float getCurrentSpeedInMPS(FastAccelStepper* stepper1, FastAccelStepper* stepper2) {  
+float getCurrentSpeedInMPS(FastAccelStepper* stepperL, FastAccelStepper* stepperR) {  
 
     // Check if the stepper pointers are valid  
-    if (stepper1 == nullptr || stepper2 == nullptr) {  
+    if (stepperL == nullptr || stepperR == nullptr) {  
         Serial.println("Error: Stepper motor not initialized!");  
         return 0.0; 
     } 
 
-    int32_t mot1Speed = stepper1->getCurrentSpeedInMilliHz();
-    int32_t mot2Speed = stepper2->getCurrentSpeedInMilliHz();
+    int32_t mot1Speed = stepperL->getCurrentSpeedInMilliHz();
+    int32_t mot2Speed = stepperR->getCurrentSpeedInMilliHz();
 
 
     float speed = (mot1Speed - mot2Speed) / 2.0;
