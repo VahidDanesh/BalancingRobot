@@ -13,6 +13,8 @@
 
 
 uint8_t controlMode = PID_ANGLE; // Default to angle+position control  
+unsigned long previousMillis = 0;
+const unsigned long interval = 1000;
 
 // PID tuning parameters  
 float Kp_angle = 5.0, Ki_angle = 0.0, Kd_angle = 0.3;  
@@ -23,6 +25,8 @@ float Kp_speed = 3.0, Ki_speed = 0.8, Kd_speed = 0.2;
 float input_angle = 0, output_angle = 0, setpoint_angle = 0;  
 float input_pos = 0, output_pos = 0, setpoint_pos = 0;  
 float input_speed = 0, output_speed = 0, setpoint_speed = 0;  
+
+float avgSpeed = 0;
 
 // PID instances  
 PID pid_angle(&input_angle, &output_angle, &setpoint_angle, Kp_angle, Ki_angle, Kd_angle, 1, REVERSE); 
@@ -121,17 +125,22 @@ void loop() {
 
     // Update IMU data  
     imu.update();  
-    input_angle = imu.getRoll() * RAD_TO_DEG;  
+    input_angle = imu.getRoll() * RAD_TO_DEG;
+        // Update control mode  
+    updateControlMode();   
 
-    // Emergency stop if tilt angle exceeds safety limits  
-    if (abs(input_angle) > EMERGENCY_STOP_ANGLE) {  
-        stepper1->setSpeedInHz(1);
-        stepper2->setSpeedInHz(1);
-        Serial.println("Emergency Stop: Tilt angle exceeded safety limits!");  
-    }  
 
-    // Update control mode  
-    updateControlMode();  
+
+    unsigned long currentMillis = millis();
+    if (currentMillis - previousMillis >= interval) {
+        previousMillis = currentMillis;
+        // Emergency stop if tilt angle exceeds safety limits  
+        if (abs(input_angle) > EMERGENCY_STOP_ANGLE) {  
+            stepper1->setSpeedInHz(1);
+            stepper2->setSpeedInHz(1);
+            Serial.println("Emergency Stop: Tilt angle exceeded safety limits!");  
+        }  
+    }
 
     // // Print data for debugging  
     // Serial.print("Control Mode: ");  
@@ -164,11 +173,9 @@ void updateControlMode() {
         case PID_POS:
             // Position control
             pid_speed.Compute();
-            setpoint_pos = 0; //output_speed;  // Speed controller sets position target
+            setpoint_pos = avgSpeed; //output_speed;  // Speed controller sets position target
             input_pos = robotPos(stepper1, stepper2);
             
-            Serial.print("Input Pos: ");
-            Serial.println(input_pos);
 
             pid_pos.Compute();
             setpoint_angle = output_pos; // Position controller sets angle target
@@ -187,6 +194,7 @@ void updateControlMode() {
 
         case PID_SPEED:
             // Speed control
+            input_speed = avgSpeed;
             pid_speed.Compute();
             setpoint_angle = output_speed;  // Speed controller sets angle target
             pid_angle.Compute();
@@ -272,40 +280,46 @@ void setupWebServer() {
 
     // Handle PID updates
     server.on("/pid", HTTP_POST, [](AsyncWebServerRequest* request) {
-        // Check if the request has a JSON body
-        if (request->contentType() == "application/json") {
-            // Parse the JSON body
-            JsonDocument doc;
-            if (request->hasParam("plain", true)) {
-            String json = request->getParam("plain", true)->value();
-            Serial.println("Received JSON: " + json);
-            DeserializationError error = deserializeJson(doc, json);
-            if (error) {
-                request->send(400, "text/plain", "Invalid JSON");
-                Serial.println("Invalid JSON received" + String(error.c_str()));
-                return;
-            }}
+        // // Check if the request has a JSON body
+        // if (request->contentType() == "application/json") {
+        //     // Parse the JSON body
+        //     StaticJsonDocument<256> doc;
+        //     String json = "";
+        //     if (request->hasParam("plain", true)) {
+        //         json = request->getParam("plain", true)->value();
+        //         Serial.println("Received JSON: " + json);
 
-            
-            
+        //         DeserializationError error = deserializeJson(doc, json);
 
-            // Extract the PID type and values
-            String pidType = doc["type"];
-            float Kp = doc[String("Kp_") + pidType];
-            float Ki = doc[String("Ki_") + pidType];
-            float Kd = doc[String("Kd_") + pidType];
-            
-            Serial.println(pidType);
-            Serial.println(Kp);
-            Serial.println(Ki);
-            Serial.println(Kd);
+        //         if (error) {
+        //             request->send(400, "text/plain", "Invalid JSON");
+        //             Serial.println("Invalid JSON received" + String(error.c_str()));
+        //             return;
+        //     }}
 
-            for (JsonPair kv : doc.as<JsonObject>()) {
-                Serial.print("Key: ");
-                Serial.print(kv.key().c_str());
-                Serial.print(", Value: ");
-                Serial.println(kv.value().as<String>());
-            }
+  
+            // // Extract the PID type and values
+            // String pidType = doc["type"];
+            // float Kp = doc[String("Kp_") + pidType];
+            // float Ki = doc[String("Ki_") + pidType];
+            // float Kd = doc[String("Kd_") + pidType];
+            
+            // Serial.println(pidType);
+            // Serial.println(Kp);
+            // Serial.println(Ki);
+            // Serial.println(Kd);
+
+            // for (JsonPair kv : doc.as<JsonObject>()) {
+            //     Serial.print("Key: ");
+            //     Serial.print(kv.key().c_str());
+            //     Serial.print(", Value: ");
+            //     Serial.println(kv.value().as<String>());
+            // }
+        if (request->hasParam("type")) {
+            String pidType = request->getParam("type")->value();
+            float Kp = request->getParam(String("Kp_") + pidType)->value().toFloat();
+            float Ki = request->getParam(String("Ki_") + pidType)->value().toFloat();
+            float Kd = request->getParam(String("Kd_") + pidType)->value().toFloat();
 
             // Update the corresponding PID controller
             if (pidType == "angle") {
@@ -324,6 +338,7 @@ void setupWebServer() {
             }
 
             request->send(200, "text/plain", "PID values updated successfully");
+            Serial.println("PID values updated successfully");
         } else {
             request->send(400, "text/plain", "Invalid content type");
             Serial.println("Invalid content type");
@@ -336,17 +351,18 @@ void setupWebServer() {
         if (request->hasParam("cmd")) {
             String command = request->getParam("cmd")->value();
             if (command == "stop") {
-                setpoint_speed = 0;
+
+                avgSpeed = 0;    
                 request->send(200, "text/plain", "Robot stopped");
                 Serial.println("Robot stopped");
             } else if (command == "accelerate") {
                 // Handle accelerate logic increase setpoint v = 0.2 m/s
-                setpoint_speed += 0.2;
+                avgSpeed += 0.2;
                 request->send(200, "text/plain", "Robot accelerating");
                 Serial.println("Robot accelerating");
             } else if (command == "decelerate") {
                 // Handle decelerate logic decrease setpoint v = 0.2 m/s
-                setpoint_speed -= 0.2;
+                avgSpeed -= 0.2;
                 request->send(200, "text/plain", "Robot decelerating");
                 Serial.println("Robot decelerating");
             } else if (command == "left" || command == "right") {
@@ -404,6 +420,11 @@ void setupWebServer() {
             request->send(400, "text/plain", "Missing mode parameter");
             Serial.println("Missing mode parameter");
         }
+    });
+
+    server.onNotFound([](AsyncWebServerRequest *request) {
+        request->send(404, "text/plain", "Not Found");
+        request->client()->close(); // Close idle connections
     });
     // Start the server  
     server.begin();  

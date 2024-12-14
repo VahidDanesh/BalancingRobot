@@ -413,19 +413,10 @@
                 [`Ki_${pidType}`]: parseFloat(document.getElementById(`Ki_${pidType}`).value),
                 [`Kd_${pidType}`]: parseFloat(document.getElementById(`Kd_${pidType}`).value),
             };
+            const urlParams = new URLSearchParams({ type: pidType, ...pidValues }).toString();
 
-            pidValues.type = pidType;
 
-            console.log('Sending JSON:', JSON.stringify(pidValues));
-
-            // Send the PID values to the server
-            fetch('/pid', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(pidValues),
-            })
+            fetch(`/pid?${urlParams}`, { method: 'POST' })
                 .then((response) => {
                     if (response.ok) {
                         updateStatus(`${pidType.toUpperCase()} PID values updated successfully!`);
@@ -436,7 +427,31 @@
                 .catch((error) => {
                     alert(`Error: ${error.message}`);
                 });
-        }
+            }
+
+            // pidValues.type = pidType;
+
+            //console.log('Sending JSON:', JSON.stringify(pidValues));
+
+            // Send the PID values to the server
+        //     fetch('/pid', {
+        //         method: 'POST',
+        //         headers: {
+        //             'Content-Type': 'application/json',
+        //         },
+        //         body: JSON.stringify(pidValues),
+        //     })
+        //         .then((response) => {
+        //             if (response.ok) {
+        //                 updateStatus(`${pidType.toUpperCase()} PID values updated successfully!`);
+        //             } else {
+        //                 alert(`Failed to update ${pidType.toUpperCase()} PID values.`);
+        //             }
+        //         })
+        //         .catch((error) => {
+        //             alert(`Error: ${error.message}`);
+        //         });
+        // }
         
         // Fetch the current controller type from the board when the page loads
         function fetchCurrentControllerType() {
