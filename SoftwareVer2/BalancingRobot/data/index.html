@@ -1,7 +1,26 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <script src="config.js"></script>
+    <script>
+        const CONFIG = {
+            pid: {
+                Kp_angle: { min: 0, max: 10, step: 0.1, default: 5 },
+                Ki_angle: { min: 0, max: 5, step: 0.01, default: 0 },
+                Kd_angle: { min: 0, max: 2, step: 0.1, default: 0.3 },
+                Kp_pos: { min: 0, max: 10, step: 0.1, default: 2 },
+                Ki_pos: { min: 0, max: 5, step: 0.01, default: 0.5 },
+                Kd_pos: { min: 0, max: 2, step: 0.1, default: 0.1 },
+                Kp_speed: { min: 0, max: 10, step: 0.1, default: 3 },
+                Ki_speed: { min: 0, max: 5, step: 0.01, default: 0.8 },
+                Kd_speed: { min: 0, max: 2, step: 0.1, default: 0.2 },
+            },
+            modes: {
+                available: ['manual', 'auto', 'debug'],
+                default: 'manual',
+            },
+        };
+
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Self-Balancing Robot Control</title>
@@ -311,7 +330,9 @@
                         document.write(`
                             <div class="pid-column">
                                 <h3>${pidType.charAt(0).toUpperCase() + pidType.slice(1)} Control</h3>
-                                ${Object.entries(CONFIG.pid).filter(([param]) => param.includes(pidType)).map(([param, config]) => `
+                                ${Object.entries(CONFIG.pid)
+                                .filter(([param]) => param.includes(pidType))
+                                .map(([param, config]) => `
                                     <div class="pid-input">
                                         <label for="${param}">${param.charAt(1).toUpperCase()}:</label>
                                         <input type="range" 
@@ -380,13 +401,13 @@
             clearTimeout(slider.timeout);
             slider.timeout = setTimeout(() => {
                 updatePID();
-            }, 100);
+            }, 500);
         }
 
         // Function to update PID values on the server
         function updatePID() {
             const pidValues = {};
-            Object.keys(PID_CONFIG).forEach(param => {
+            Object.keys(CONFIG.pid).forEach(param => {
                 pidValues[param] = parseFloat(document.getElementById(param).value);
             });
 
@@ -406,19 +427,9 @@
             });
         }
 
-        // Function to reset PID values to default
-        function resetPID() {
-            Object.entries(PID_CONFIG).forEach(([param, config]) => {
-                const slider = document.getElementById(param);
-                slider.value = config.default;
-                document.getElementById(`${param}-value`).textContent = config.default.toFixed(2);
-            });
-            updatePID();
-        }
-        
 
         function savePIDValues() {
-            const pidType = document.getElementById('pidType').value;
+            const pidType = document.getElementById('controllerType').value;
             const pidValues = {
                 [`Kp_${pidType}`]: parseFloat(document.getElementById(`Kp_${pidType}`).value),
                 [`Ki_${pidType}`]: parseFloat(document.getElementById(`Ki_${pidType}`).value),
@@ -442,11 +453,40 @@
                 });
         }
         
-        function updateControllerType() {
-            const controllerType = document.getElementById('controllerType').value;
-            updateStatus(`Controller type changed to: ${controllerType}`);
+        // Fetch the current controller type from the board when the page loads
+        function fetchCurrentControllerType() {
+            fetch('/controller?get=current')
+                .then(response => response.text())
+                .then(currentType => {
+                    const controllerTypeSelect = document.getElementById('controllerType');
+                    // Set the dropdown to the current controller type
+                    controllerTypeSelect.value = currentType;
+                    updateStatus(`Current controller type: ${currentType}`);
+                })
+                .catch(error => {
+                    updateStatus(`Error fetching current controller type: ${error.message}`);
+                });
         }
 
+        // Update the controller type on the board
+        function updateControllerType() {
+            const controllerType = document.getElementById('controllerType').value;
+
+            // Send the selected controller type to the board
+            fetch(`/controller?set=${controllerType}`, {
+                method: 'GET',
+            })
+                .then(response => {
+                    if (response.ok) {
+                        updateStatus(`Controller type changed to: ${controllerType}`);
+                    } else {
+                        updateStatus('Failed to update controller type on the board');
+                    }
+                })
+                .catch(error => {
+                    updateStatus(`Error: ${error.message}`);
+                });
+        }
 
         // Function to set operation mode
         function setMode(mode) {
@@ -472,6 +512,9 @@
         function updateStatus(message) {
             document.getElementById('status').textContent = `Status: ${message}`;
         }
+    
+    // Fetch the current controller type when the page loads
+    window.onload = fetchCurrentControllerType;
     </script>
 </body>
 </html>

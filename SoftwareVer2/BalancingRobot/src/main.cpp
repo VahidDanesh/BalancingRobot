@@ -269,61 +269,35 @@ void setupWebServer() {
         request->send(SPIFFS, "/index.html", "text/html");  
     });  
 
-    server.on("/pid", HTTP_POST, [](AsyncWebServerRequest *request) {
+    server.on("/pid", HTTP_POST, [](AsyncWebServerRequest* request) {
         if (!request->hasParam("type", true)) {
             request->send(400, "text/plain", "Missing PID type parameter");
+            Serial.println("Missing PID type parameter");
             return;
         }
 
         String pidType = request->getParam("type", true)->value();
-        float Kp, Ki, Kd;
+        float Kp = 0.0, Ki = 0.0, Kd = 0.0;
+
+        if (request->hasParam("Kp_" + pidType, true)) {
+            Kp = request->getParam("Kp_" + pidType, true)->value().toFloat();
+        }
+        if (request->hasParam("Ki_" + pidType, true)) {
+            Ki = request->getParam("Ki_" + pidType, true)->value().toFloat();
+        }
+        if (request->hasParam("Kd_" + pidType, true)) {
+            Kd = request->getParam("Kd_" + pidType, true)->value().toFloat();
+        }
 
         if (pidType == "angle") {
-            Kp = request->getParam("Kp_angle", true)->value().toFloat();
-            Ki = request->getParam("Ki_angle", true)->value().toFloat();
-            Kd = request->getParam("Kd_angle", true)->value().toFloat();
             pid_angle.SetTunings(Kp, Ki, Kd);
-
-            Serial.println("Angle PID values updated successfully");
-            Serial.print("[Kp, Ki, Kd] = [");
-            Serial.print(Kp);
-            Serial.print(", ");
-            Serial.print(Ki);
-            Serial.print(", ");
-            Serial.print(Kd);
-            Serial.println("]");
-
+            Serial.printf("Updated Angle PID: Kp=%.2f, Ki=%.2f, Kd=%.2f\n", Kp, Ki, Kd);
         } else if (pidType == "pos") {
-            Kp = request->getParam("Kp_pos", true)->value().toFloat();
-            Ki = request->getParam("Ki_pos", true)->value().toFloat();
-            Kd = request->getParam("Kd_pos", true)->value().toFloat();
             pid_pos.SetTunings(Kp, Ki, Kd);
-
-            Serial.println("Position PID values updated successfully");
-            Serial.print("[Kp, Ki, Kd] = [");
-            Serial.print(Kp);
-            Serial.print(", ");
-            Serial.print(Ki);
-            Serial.print(", ");
-            Serial.print(Kd);
-            Serial.println("]");
-
+            Serial.printf("Updated Position PID: Kp=%.2f, Ki=%.2f, Kd=%.2f\n", Kp, Ki, Kd);
         } else if (pidType == "speed") {
-            Kp = request->getParam("Kp_speed", true)->value().toFloat();
-            Ki = request->getParam("Ki_speed", true)->value().toFloat();
-            Kd = request->getParam("Kd_speed", true)->value().toFloat();
             pid_speed.SetTunings(Kp, Ki, Kd);
-
-            Serial.println("Speed PID values updated successfully");
-            Serial.print("[Kp, Ki, Kd] = [");
-            Serial.print(Kp);
-            Serial.print(", ");
-            Serial.print(Ki);
-            Serial.print(", ");
-            Serial.print(Kd);
-            Serial.println("]");
-
-
+            Serial.printf("Updated Speed PID: Kp=%.2f, Ki=%.2f, Kd=%.2f\n", Kp, Ki, Kd);
         } else {
             request->send(400, "text/plain", "Invalid PID type");
             return;
@@ -332,22 +306,29 @@ void setupWebServer() {
         request->send(200, "text/plain", "PID values updated successfully");
     });
 
+
     // Handle commands (e.g., movement)
     server.on("/command", HTTP_GET, [](AsyncWebServerRequest* request) {
         if (request->hasParam("cmd")) {
             String command = request->getParam("cmd")->value();
             if (command == "stop") {
-                // Handle stop logic set point v = 0 m/s
+                setpoint_speed = 0;
                 request->send(200, "text/plain", "Robot stopped");
+                Serial.println("Robot stopped");
             } else if (command == "accelerate") {
                 // Handle accelerate logic increase setpoint v = 0.2 m/s
+                setpoint_speed += 0.2;
                 request->send(200, "text/plain", "Robot accelerating");
+                Serial.println("Robot accelerating");
             } else if (command == "decelerate") {
                 // Handle decelerate logic decrease setpoint v = 0.2 m/s
+                setpoint_speed -= 0.2;
                 request->send(200, "text/plain", "Robot decelerating");
+                Serial.println("Robot decelerating");
             } else if (command == "left" || command == "right") {
                 // Handle turning logic add steer to speed
                 request->send(200, "text/plain", "Turning " + command);
+                Serial.println("Turning " + command);
             } else {
                 request->send(400, "text/plain", "Invalid command");
             }
@@ -356,29 +337,50 @@ void setupWebServer() {
         }
     });
 
-        // Handle mode changes
-    server.on("/mode", HTTP_GET, [](AsyncWebServerRequest* request) {
+    // Handle controller type change
+    server.on("/controller", HTTP_GET, [](AsyncWebServerRequest* request) {
+        // Handle getting the current mode
+        if (request->hasParam("get")) {
+            String query = request->getParam("get")->value();
+            if (query == "current") {
+                String currentMode;
+                switch (controlMode) {
+                    case PID_ANGLE: currentMode = "angle"; break;
+                    case PID_POS: currentMode = "pos"; break;
+                    case PID_SPEED: currentMode = "speed"; break;
+                    default: currentMode = "unknown"; break;
+                }
+                request->send(200, "text/plain", currentMode);
+                return;
+            }
+        }
+
+        // Handle setting a new mode
         if (request->hasParam("set")) {
             String mode = request->getParam("set")->value();
             if (mode == "angle") {
                 controlMode = PID_ANGLE;
                 request->send(200, "text/plain", "Mode set to Angle");
+                Serial.println("Mode set to Angle");
             } else if (mode == "pos") {
                 stepper1->setCurrentPosition(0);
                 stepper2->setCurrentPosition(0);
                 controlMode = PID_POS;
                 request->send(200, "text/plain", "Mode set to Position");
+                Serial.println("Mode set to Position");
             } else if (mode == "speed") {
                 controlMode = PID_SPEED;
                 request->send(200, "text/plain", "Mode set to Speed");
+                Serial.println("Mode set to Speed");
             } else {
                 request->send(400, "text/plain", "Invalid mode");
+                Serial.println("Invalid mode");
             }
         } else {
             request->send(400, "text/plain", "Missing mode parameter");
+            Serial.println("Missing mode parameter");
         }
     });
-
     // Start the server  
     server.begin();  
     Serial.println("Web Server started.");  
