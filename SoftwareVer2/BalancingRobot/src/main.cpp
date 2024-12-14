@@ -140,6 +140,11 @@ void loop() {
             stepper2->setSpeedInHz(1);
             Serial.println("Emergency Stop: Tilt angle exceeded safety limits!");  
         }  
+        if (WiFi.status() != WL_CONNECTED) {
+            Serial.print("Reconnecting to WiFi...");
+            Serial.println(WIFI_SSID);
+            WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+        }
     }
 
     // // Print data for debugging  
