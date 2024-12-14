@@ -319,6 +319,10 @@ void processSerialCommands() {
             controlMode = command.substring(1).toInt();  
             Serial.print("Updated Control Mode: ");  
             Serial.println(controlMode);  
+        } else if (command.startsWith("a")) {
+            alphaSpeed = command.substring(1).toFloat();
+            Serial.print("Updated alphaSpeed: ");
+            Serial.println(alphaSpeed);
         } else {  
             Serial.println("Invalid command.");  
         }  
