@@ -404,28 +404,6 @@
             }, 500);
         }
 
-        // Function to update PID values on the server
-        function updatePID() {
-            const pidValues = {};
-            Object.keys(CONFIG.pid).forEach(param => {
-                pidValues[param] = parseFloat(document.getElementById(param).value);
-            });
-
-            fetch('/pid', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(pidValues)
-            })
-            .then(response => response.text())
-            .then(data => {
-                updateStatus('PID values updated');
-            })
-            .catch(error => {
-                updateStatus('Error updating PID values');
-            });
-        }
 
 
         function savePIDValues() {
@@ -436,14 +414,21 @@
                 [`Kd_${pidType}`]: parseFloat(document.getElementById(`Kd_${pidType}`).value),
             };
 
-            const urlParams = new URLSearchParams(pidValues).toString();
+            pidValues.type = pidType;
 
-            fetch(`/pid?type=${pidType}&` + urlParams, {
+            console.log('Sending JSON:', JSON.stringify(pidValues));
+
+            // Send the PID values to the server
+            fetch('/pid', {
                 method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(pidValues),
             })
                 .then((response) => {
                     if (response.ok) {
-                        alert(`${pidType.toUpperCase()} PID values updated successfully!`);
+                        updateStatus(`${pidType.toUpperCase()} PID values updated successfully!`);
                     } else {
                         alert(`Failed to update ${pidType.toUpperCase()} PID values.`);
                     }

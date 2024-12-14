@@ -3,6 +3,7 @@
 #include <PID_v1.h>  
 #include <WiFi.h>  
 #include <ESPmDNS.h>
+#include <ArduinoJson.h>
 #include <ESPAsyncWebServer.h>  
 #include <AsyncTCP.h>  
 #include <SPIFFS.h>  
@@ -269,41 +270,64 @@ void setupWebServer() {
         request->send(SPIFFS, "/index.html", "text/html");  
     });  
 
+    // Handle PID updates
     server.on("/pid", HTTP_POST, [](AsyncWebServerRequest* request) {
-        if (!request->hasParam("type", true)) {
-            request->send(400, "text/plain", "Missing PID type parameter");
-            Serial.println("Missing PID type parameter");
-            return;
-        }
+        // Check if the request has a JSON body
+        if (request->contentType() == "application/json") {
+            // Parse the JSON body
+            JsonDocument doc;
+            if (request->hasParam("plain", true)) {
+            String json = request->getParam("plain", true)->value();
+            Serial.println("Received JSON: " + json);
+            DeserializationError error = deserializeJson(doc, json);
+            if (error) {
+                request->send(400, "text/plain", "Invalid JSON");
+                Serial.println("Invalid JSON received" + String(error.c_str()));
+                return;
+            }}
 
-        String pidType = request->getParam("type", true)->value();
-        float Kp = 0.0, Ki = 0.0, Kd = 0.0;
+            
+            
 
-        if (request->hasParam("Kp_" + pidType, true)) {
-            Kp = request->getParam("Kp_" + pidType, true)->value().toFloat();
-        }
-        if (request->hasParam("Ki_" + pidType, true)) {
-            Ki = request->getParam("Ki_" + pidType, true)->value().toFloat();
-        }
-        if (request->hasParam("Kd_" + pidType, true)) {
-            Kd = request->getParam("Kd_" + pidType, true)->value().toFloat();
-        }
+            // Extract the PID type and values
+            String pidType = doc["type"];
+            float Kp = doc[String("Kp_") + pidType];
+            float Ki = doc[String("Ki_") + pidType];
+            float Kd = doc[String("Kd_") + pidType];
+            
+            Serial.println(pidType);
+            Serial.println(Kp);
+            Serial.println(Ki);
+            Serial.println(Kd);
 
-        if (pidType == "angle") {
-            pid_angle.SetTunings(Kp, Ki, Kd);
-            Serial.printf("Updated Angle PID: Kp=%.2f, Ki=%.2f, Kd=%.2f\n", Kp, Ki, Kd);
-        } else if (pidType == "pos") {
-            pid_pos.SetTunings(Kp, Ki, Kd);
-            Serial.printf("Updated Position PID: Kp=%.2f, Ki=%.2f, Kd=%.2f\n", Kp, Ki, Kd);
-        } else if (pidType == "speed") {
-            pid_speed.SetTunings(Kp, Ki, Kd);
-            Serial.printf("Updated Speed PID: Kp=%.2f, Ki=%.2f, Kd=%.2f\n", Kp, Ki, Kd);
+            for (JsonPair kv : doc.as<JsonObject>()) {
+                Serial.print("Key: ");
+                Serial.print(kv.key().c_str());
+                Serial.print(", Value: ");
+                Serial.println(kv.value().as<String>());
+            }
+
+            // Update the corresponding PID controller
+            if (pidType == "angle") {
+                pid_angle.SetTunings(Kp, Ki, Kd);
+                Serial.printf("Updated Angle PID: Kp=%.2f, Ki=%.2f, Kd=%.2f\n", Kp, Ki, Kd);
+            } else if (pidType == "pos") {
+                pid_pos.SetTunings(Kp, Ki, Kd);
+                Serial.printf("Updated Position PID: Kp=%.2f, Ki=%.2f, Kd=%.2f\n", Kp, Ki, Kd);
+            } else if (pidType == "speed") {
+                pid_speed.SetTunings(Kp, Ki, Kd);
+                Serial.printf("Updated Speed PID: Kp=%.2f, Ki=%.2f, Kd=%.2f\n", Kp, Ki, Kd);
+            } else {
+                request->send(400, "text/plain", "Invalid PID type");
+                Serial.println("Invalid PID type");
+                return;
+            }
+
+            request->send(200, "text/plain", "PID values updated successfully");
         } else {
-            request->send(400, "text/plain", "Invalid PID type");
-            return;
+            request->send(400, "text/plain", "Invalid content type");
+            Serial.println("Invalid content type");
         }
-
-        request->send(200, "text/plain", "PID values updated successfully");
     });
 
 
