@@ -45,11 +45,12 @@ IMUHandler& imu = IMUHandler::getInstance();
 
 // WiFi and Web Server  
 AsyncWebServer server(WEB_SERVER_PORT);  
+AsyncWebSocket ws("/ws");
 
 // Function declarations  
 void setupWiFi();  
 void setupWebServer();  
-void handleWebRequests();  
+void sendWebSocketData();
 void processSerialCommands();  
 float rpm2sps(float rpm);
 float getRobotPos(FastAccelStepper* stepperL, FastAccelStepper* stepperR);
@@ -186,6 +187,7 @@ void loop() {
             WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
         }
     }
+    sendWebSocketData();
 
     
     // // Print data for debugging  
@@ -232,66 +234,46 @@ float rpm2sps(float rpm) {
     return (rpm * STEPS_PER_REV * MICROSTEPS) / 60.0;  
 }  
 
-
-float getRobotPos(FastAccelStepper* stepperL, FastAccelStepper* stepperR) {  
-    float motPos =  (stepperL->getCurrentPosition() - stepperR->getCurrentPosition()) / 2.0;
-    float pos = motPos / (STEPS_PER_REV * MICROSTEPS) * TWO_PI * WHEEL_RADIUS;
-    return pos;  
+float getRobotPos(FastAccelStepper* stepperL, FastAccelStepper* stepperR) {
+    float motPos = (stepperL->getCurrentPosition() - stepperR->getCurrentPosition()) / 2.0;
+    return motPos / (STEPS_PER_REV * MICROSTEPS) * TWO_PI * WHEEL_RADIUS;
 }
 
-float getRobotSpeed(FastAccelStepper* stepperL, FastAccelStepper* stepperR) {  
-    // Check if the stepper pointers are valid  
-    if (stepperL == nullptr || stepperR == nullptr) {  
-        Serial.println("Error: Stepper motor not initialized!");  
-        return 0.0; 
-    } 
-
-    int32_t mot1Speed = stepperL->getCurrentSpeedInMilliHz();
-    int32_t mot2Speed = stepperR->getCurrentSpeedInMilliHz();
-
-
-    float speed = (mot1Speed - mot2Speed) / 2.0;
-
-
-    // convert the speed of stepper in us to m/s using wheelRadius
-    float speedInHZ = speed / 1000.0;
-    float speedInRPS = speedInHZ  / (STEPS_PER_REV * MICROSTEPS);
-    float speedInMPS = speedInRPS * TWO_PI *  WHEEL_RADIUS;
-
-
-    return speedInMPS;  
+float getRobotSpeed(FastAccelStepper* stepperL, FastAccelStepper* stepperR) {
+    return (stepperL->getCurrentSpeedInMilliHz() - stepperR->getCurrentSpeedInMilliHz()) /
+           (1000.0 * STEPS_PER_REV * MICROSTEPS) * PI * WHEEL_RADIUS;   // ((w1-w2)/2) * r
 }
 
 bool near(float value, float target, float tolerance) {
     return abs(value - target) < tolerance;
 }
 
-void setRobotSpeed(float stepperLSpeed, float stepperRSpeed) {  
-    stepperLSpeed = (rpm2sps(stepperLSpeed));
-    stepperRSpeed = (rpm2sps(stepperRSpeed));
+// void setRobotSpeed(float stepperLSpeed, float stepperRSpeed) {  
+//     stepperLSpeed = (rpm2sps(stepperLSpeed));
+//     stepperRSpeed = (rpm2sps(stepperRSpeed));
 
-    if (!stepperL->setSpeedInHz(abs(stepperLSpeed))) {
-        stepperL->stopMove();
-        Serial.println("Error setting speed for left motor!");
-        Serial.println(stepperLSpeed);
-    } else if (!stepperR->setSpeedInHz(abs(stepperRSpeed))) {
-        stepperR->stopMove();
-        Serial.println("Error setting speed for right motor!");
-        Serial.println(stepperRSpeed);
-    }
+//     if (!stepperL->setSpeedInHz(abs(stepperLSpeed))) {
+//         stepperL->stopMove();
+//         Serial.println("Error setting speed for left motor!");
+//         Serial.println(stepperLSpeed);
+//     } else if (!stepperR->setSpeedInHz(abs(stepperRSpeed))) {
+//         stepperR->stopMove();
+//         Serial.println("Error setting speed for right motor!");
+//         Serial.println(stepperRSpeed);
+//     }
 
-    if (stepperLSpeed > 0){
-        stepperL->runForward();
-    } else {
-        stepperL->runBackward();
-    }
-    if (stepperRSpeed > 0){
-        stepperR->runBackward();
-    } else {
-        stepperR->runForward();
-    }
+//     if (stepperLSpeed > 0){
+//         stepperL->runForward();
+//     } else {
+//         stepperL->runBackward();
+//     }
+//     if (stepperRSpeed > 0){
+//         stepperR->runBackward();
+//     } else {
+//         stepperR->runForward();
+//     }
 
-}
+// }
 
 
 
@@ -354,6 +336,10 @@ void setupWebServer() {
     server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {  
         request->send(SPIFFS, "/index.html", "text/html");  
     });  
+
+    server.on("/plot", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->send(SPIFFS, "/plot.html", "text/html");
+    });
 
     // Handle PID updates
     server.on("/pid", HTTP_POST, [](AsyncWebServerRequest* request) {
@@ -501,11 +487,49 @@ void setupWebServer() {
         }
     });
 
+    ws.onEvent([](AsyncWebSocket* server, AsyncWebSocketClient* client, AwsEventType type,
+                  void* arg, uint8_t* data, size_t len) {
+        if (type == WS_EVT_CONNECT) {
+            Serial.printf("Client %u connected\n", client->id());
+        } else if (type == WS_EVT_DISCONNECT) {
+            Serial.printf("Client %u disconnected\n", client->id());
+        }
+    });
+    
+
     server.onNotFound([](AsyncWebServerRequest *request) {
         request->send(404, "text/plain", "Not Found");
         request->client()->close(); // Close idle connections
     });
     // Start the server  
+    server.addHandler(&ws);
     server.begin();  
     Serial.println("Web Server started.");  
 }  
+
+void sendWebSocketData() {
+    if (ws.count() > 0) {
+        JsonDocument json;
+
+        json["time"] = millis() / 1000.0;
+        json["angle"]["setpoint"] = setpoint_angle;
+        json["angle"]["input"] = input_angle;
+        json["angle"]["output"] = output_angle;
+
+        json["position"]["setpoint"] = setpoint_pos;
+        json["position"]["input"] = input_pos;
+        json["position"]["output"] = output_pos;
+
+        json["speed"]["setpoint"] = setpoint_speed;
+        json["speed"]["input"] = input_speed;
+        json["speed"]["output"] = output_speed;
+
+        json["motor"]["left_speed"] = stepperLSpeed;
+        json["motor"]["right_speed"] = stepperRSpeed;
+        json["robot_position"] = getRobotPos(stepperL, stepperR);
+
+        String message;
+        serializeJson(json, message);
+        ws.textAll(message);
+    }
+}
