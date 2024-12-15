@@ -58,8 +58,8 @@ void setupWebServer();
 void sendWebSocketData();
 void processSerialCommands();  
 float rpm2sps(float rpm);
-float getRobotPos(FastAccelStepper* stepperL, FastAccelStepper* stepperR);
-float getRobotSpeed(FastAccelStepper* stepperL, FastAccelStepper* stepperR);
+float getRobotPos();
+float getRobotSpeed();
 bool near(float a, float b, float tolerance);
 void setRobotSpeed(float stepperLSpeed, float stepperRSpeed);
 void updateControlMode();  
@@ -139,7 +139,7 @@ void loop() {
     // Update IMU data  
     imu.update();  
     input_angle = imu.getRoll() * RAD_TO_DEG;
-    input_speed = getRobotSpeed(stepperL, stepperR);
+    input_speed = getRobotSpeed();
 
 
     // Update control mode  
@@ -206,7 +206,7 @@ void updateControlMode() {
             // Position control
             pid_speed.Compute();
             setpoint_pos = avgSpeedInput; //output_speed;  // Speed controller sets position target
-            input_pos = getRobotPos(stepperL, stepperR);
+            input_pos = getRobotPos();
             
 
             pid_pos.Compute();
@@ -227,12 +227,12 @@ float rpm2sps(float rpm) {
     return (rpm * STEPS_PER_REV * MICROSTEPS) / 60.0;  
 }  
 
-float getRobotPos(FastAccelStepper* stepperL, FastAccelStepper* stepperR) {
+float getRobotPos() {
     float motPos = (stepperL->getCurrentPosition() - stepperR->getCurrentPosition()) / 2.0;
     return motPos / (STEPS_PER_REV * MICROSTEPS) * TWO_PI * WHEEL_RADIUS;
 }
 
-float getRobotSpeed(FastAccelStepper* stepperL, FastAccelStepper* stepperR) {
+float getRobotSpeed() {
     return (stepperL->getCurrentSpeedInMilliHz() - stepperR->getCurrentSpeedInMilliHz()) /
            (1000.0 * STEPS_PER_REV * MICROSTEPS) * PI * WHEEL_RADIUS;   // ((w1-w2)/2) * r
 }
@@ -326,6 +326,9 @@ void setupWiFi() {
 
 void setupWebServer() {  
     DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
+    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers", "Content-Type");
+
 
     // Serve the index.html file  
     // server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {  
@@ -525,7 +528,7 @@ void sendWebSocketData() {
 
             json["motor"]["left_speed"] = stepperLSpeed;
             json["motor"]["right_speed"] = stepperRSpeed;
-            json["robot_position"] = getRobotPos(stepperL, stepperR);
+            json["robot_position"] = getRobotPos();
 
             String message;
             serializeJson(json, message);
