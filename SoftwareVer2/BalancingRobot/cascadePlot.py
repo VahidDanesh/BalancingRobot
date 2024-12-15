@@ -4,7 +4,7 @@ from matplotlib.animation import FuncAnimation
 import re
 
 # Configuration
-SERIAL_PORT = "/dev/ttyUSB0"  # Replace with your serial port (e.g., "COM3" on Windows, "/dev/ttyUSB0" on Linux/Mac)
+SERIAL_PORT = "COM6"  # Replace with your serial port (e.g., "COM3" on Windows, "/dev/ttyUSB0" on Linux/Mac)
 BAUD_RATE = 115200
 PLOT_INTERVAL = 100  # Update interval in milliseconds
 MAX_POINTS = 200  # Maximum points to display on the plot

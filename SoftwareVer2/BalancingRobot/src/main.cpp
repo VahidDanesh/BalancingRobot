@@ -6,6 +6,7 @@
 #include <ArduinoJson.h>
 #include <ESPAsyncWebServer.h>  
 #include <AsyncTCP.h>  
+#include <WebSocketsServer.h>
 #include <SPIFFS.h>  
 #include <ArduinoOTA.h>
 #include "config.h"  
@@ -69,7 +70,8 @@ IMUHandler& imu = IMUHandler::getInstance();
 
 // WiFi and Web Server  
 AsyncWebServer server(WEB_SERVER_PORT);  
-AsyncWebSocket ws("/ws");
+// AsyncWebSocket ws("/ws");
+WebSocketsServer ws = WebSocketsServer(81);
 
 // Function declarations  
 void setupWiFi();  
@@ -88,10 +90,10 @@ void setup() {
     Serial.begin(SERIAL_BAUD);  
 
     // Initialize SPIFFS  
-    // if (!SPIFFS.begin(true)) {  
-    //     Serial.println("Failed to mount SPIFFS!");  
-    //     while (1);  
-    // }  
+    if (!SPIFFS.begin(true)) {  
+        Serial.println("Failed to mount SPIFFS!");  
+        while (1);  
+    }  
 
     // Initialize IMU  
     imu.initialize();  
@@ -189,7 +191,8 @@ void loop() {
     
 
     sendWebSocketData();
-    ArduinoOTA.handle(); // Handle OTA updates
+    // ArduinoOTA.handle(); // Handle OTA updates
+    ws.loop(); // Handle WebSocket events
 
 
 
@@ -201,9 +204,9 @@ void loop() {
         Serial.print(getRobotPos());
         Serial.print(" Output Pos: ");
         Serial.print(output_pos);
-        Serial.print(" Input Speed");
+        Serial.print(" Input Speed: ");
         Serial.print(input_speed);
-        Serial.print(" Output Speed");
+        Serial.print(" Output Speed: ");
         Serial.print(output_speed);
         Serial.print(" Input angle: ");
         Serial.print(input_angle);
@@ -218,8 +221,8 @@ void loop() {
         }  
         if (WiFi.status() != WL_CONNECTED) {
             Serial.print("Reconnecting to WiFi...");
-            Serial.println(WIFI_SSID);
-            WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+            setupWiFi();
+            delay(1000);
         }
     }
 }  
@@ -361,13 +364,13 @@ void setupWebServer() {
 
 
     // Serve the index.html file  
-    // server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {  
-    //     request->send(SPIFFS, "/index.html", "text/html");  
-    // });  
+    server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {  
+        request->send(SPIFFS, "/index.html", "text/html");  
+    });  
 
-    // server.on("/plot", HTTP_GET, [](AsyncWebServerRequest* request) {
-    //     request->send(SPIFFS, "/plot.html", "text/html");
-    // });
+    server.on("/plot", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->send(SPIFFS, "/plotUnion.html", "text/html");
+    });
 
     // Handle PID updates
     server.on("/pid", HTTP_POST, [](AsyncWebServerRequest* request) {
@@ -515,14 +518,18 @@ void setupWebServer() {
         }
     });
 
-    ws.onEvent([](AsyncWebSocket* server, AsyncWebSocketClient* client, AwsEventType type,
-                  void* arg, uint8_t* data, size_t len) {
-        if (type == WS_EVT_CONNECT) {
-            Serial.printf("Client %u connected\n", client->id());
-        } else if (type == WS_EVT_DISCONNECT) {
-            Serial.printf("Client %u disconnected\n", client->id());
-        }
-    });
+    
+
+    // ws.begin();
+
+    // ws.onEvent([](AsyncWebSocket* server, AsyncWebSocketClient* client, AwsEventType type,
+    //               void* arg, uint8_t* data, size_t len) {
+    //     if (type == WS_EVT_CONNECT) {
+    //         Serial.printf("Client %u connected\n", client->id());
+    //     } else if (type == WS_EVT_DISCONNECT) {
+    //         Serial.printf("Client %u disconnected\n", client->id());
+    //     }
+    // });
     
 
     server.onNotFound([](AsyncWebServerRequest *request) {
@@ -530,7 +537,16 @@ void setupWebServer() {
         request->client()->close(); // Close idle connections
     });
 
-    server.addHandler(&ws);
+    ws.begin();
+    ws.onEvent([](uint8_t num, WStype_t type, uint8_t *payload, size_t length) {
+        if (type == WStype_TEXT) {
+            Serial.println("Text data received.");
+        } else if (type == WStype_BIN) {
+            Serial.println("Binary data received.");
+        }
+    });
+
+    // server.addHandler(&ws);
     server.begin();  
     Serial.println("Web Server started.");  
 }  
@@ -586,8 +602,8 @@ void sendWebSocketData() {
         wsData.data.motor_right_speed = stepperRSpeed;
         wsData.data.robot_position = getRobotPos();
 
-        if (ws.count() > 0) {
-            ws.binaryAll(wsData.bytes, sizeof(wsData.bytes));
+        if (ws.connectedClients(0) > 0) {
+            ws.sendBIN(0, wsData.bytes, sizeof(wsData.bytes));
         }
     }
 }

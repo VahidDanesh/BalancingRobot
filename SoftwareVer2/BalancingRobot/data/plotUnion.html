@@ -41,7 +41,8 @@
     <script>
         const canvas = document.getElementById('chartContainer');
         const ctx = canvas.getContext('2d');
-        const ws = new WebSocket(`ws://${ESP32_IP}/ws`);
+        const ws = new WebSocket(`ws://${window.location.hostname}:81`); // const ws = new WebSocket(`ws://${ESP32_IP}:81`);
+        ws.binaryType = 'arraybuffer';
         const nSignals = 13; 
         const colors = ["red", "blue", "green", "orange", "purple"];
         let dataBuffer = Array.from({ length: nSignals }, () => Array(500).fill(0));
@@ -49,11 +50,22 @@
         let plotting = false;
         let enabledPlots = [];
         let sampleRate = 10;
+        
+        ws.onopen = () => {
+            console.log("WebSocket connection opened.");
+        };
+
+        ws.onclose = () => {
+            console.log("WebSocket connection closed.");
+        };
 
         ws.onmessage = (event) => {
             if (plotting) {
                 const buffer = new DataView(event.data);
-                const signals = Array(13).fill(0).map((_, i) => buffer.getFloat32(i * 4, true));
+                const signals = [];
+                for (let i = 0; i < 13; i++) {
+                    signals.push(buffer.getFloat32(i * 4, true));
+                }
                 signals.forEach((value, index) => {
                     dataBuffer[index].push(value);
                     if (dataBuffer[index].length > 500) {
