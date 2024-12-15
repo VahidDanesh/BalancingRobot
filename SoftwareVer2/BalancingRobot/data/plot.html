@@ -2,6 +2,10 @@
 <html>
 <head>
     <title>Real-Time Plot</title>
+    <script>
+        const ESP32_IP = '192.168.65.216'; // Replace with your ESP32's IP address
+    </script>
+    
 </head>
 <body>
     <canvas id="chartContainer" height="300px" width="800px" style="border:1px solid #d3d3d3;"></canvas><br />
@@ -44,7 +48,7 @@
     <script>
         const canvas = document.getElementById('chartContainer');
         const ctx = canvas.getContext('2d');
-        const ws = new WebSocket(`ws://${location.hostname}/ws`);
+        const ws = new WebSocket(`ws://${ESP32_IP}/ws`);
         const nSignals = 13; // Number of signals in JSON data
         const colors = ["red", "blue", "green", "orange", "purple"];
         let dataBuffer = Array.from({ length: nSignals }, () => Array(500).fill(0));

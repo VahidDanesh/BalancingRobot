@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plot Data</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        h1 {
+            text-align: center;
+            margin: 10px 0;
+        }
+
+        .controls {
+            text-align: center;
+            margin: 10px 0;
+        }
+
+        .chart-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px;
+            padding: 10px;
+        }
+
+        .chart-box {
+            width: 100%;
+            max-width: 400px;
+        }
+
+        canvas {
+            display: block;
+            max-width: 100%;
+            height: auto;
+        }
+
+        button {
+            margin: 5px;
+            padding: 10px 15px;
+            font-size: 16px;
+            cursor: pointer;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            background-color: #f8f9fa;
+        }
+
+        button:hover {
+            background-color: #e2e6ea;
+        }
+    </style>
+</head>
+<body>
+    <h1>ESP32 Data Plot</h1>
+
+    <!-- Buttons for Control -->
+    <div class="controls">
+        <button id="startBtn">Start</button>
+        <button id="clearBtn">Clear</button>
+        <button id="exportBtn">Export to CSV</button>
+    </div>
+
+    <!-- Chart Containers -->
+    <div class="chart-container">
+        <div class="chart-box">
+            <h3>Angle</h3>
+            <canvas id="angleChart"></canvas>
+        </div>
+        <div class="chart-box">
+            <h3>Position</h3>
+            <canvas id="positionChart"></canvas>
+        </div>
+        <div class="chart-box">
+            <h3>Speed</h3>
+            <canvas id="speedChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const ESP32_IP = "ws://192.168.208.216/ws"; // Replace with your ESP32 IP address
+        let ws; // WebSocket connection
+
+        // Data Storage for Export
+        const dataStorage = {
+            angle: [],
+            position: [],
+            speed: []
+        };
+
+        // Initialize Charts
+        const angleChart = createChart('angleChart', 'Angle', ['Setpoint', 'Input', 'Output']);
+        const positionChart = createChart('positionChart', 'Position', ['Setpoint', 'Input', 'Output']);
+        const speedChart = createChart('speedChart', 'Speed', ['Setpoint', 'Input', 'Output']);
+
+        // Create a Chart.js chart
+        function createChart(canvasId, label, datasets) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            return new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: datasets.map((name, i) => ({
+                        label: `${label} ${name}`,
+                        data: [],
+                        borderColor: `hsl(${(i * 120) % 360}, 70%, 50%)`,
+                        fill: false,
+                        tension: 0.1
+                    }))
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { title: { display: true, text: 'Time (s)' } },
+                        y: { title: { display: true, text: label } }
+                    }
+                }
+            });
+        }
+
+        // Update a Chart.js chart with new data
+        function updateChart(chart, time, values) {
+            chart.data.labels.push(time);
+            values.forEach((value, i) => {
+                chart.data.datasets[i].data.push(value);
+            });
+
+            // Limit the chart to the last 100 points
+            if (chart.data.labels.length > 100) {
+                chart.data.labels.shift();
+                chart.data.datasets.forEach(dataset => dataset.data.shift());
+            }
+
+            chart.update();
+        }
+
+        // WebSocket Message Handler
+        function handleWebSocketMessage(event) {
+            try {
+                const data = JSON.parse(event.data);
+
+                // Extract time and values
+                const time = data.time;
+
+                // Update angle chart
+                updateChart(angleChart, time, [
+                    data.angle.setpoint,
+                    data.angle.input,
+                    data.angle.output
+                ]);
+
+                // Update position chart
+                updateChart(positionChart, time, [
+                    data.position.setpoint,
+                    data.position.input,
+                    data.position.output
+                ]);
+
+                // Update speed chart
+                updateChart(speedChart, time, [
+                    data.speed.setpoint,
+                    data.speed.input,
+                    data.speed.output
+                ]);
+
+                // Store data for export
+                dataStorage.angle.push([time, data.angle.setpoint, data.angle.input, data.angle.output]);
+                dataStorage.position.push([time, data.position.setpoint, data.position.input, data.position.output]);
+                dataStorage.speed.push([time, data.speed.setpoint, data.speed.input, data.speed.output]);
+
+            } catch (error) {
+                console.error("Error parsing WebSocket message:", error);
+            }
+        }
+
+        // WebSocket Control
+        function startWebSocket() {
+            ws = new WebSocket(ESP32_IP);
+            ws.onopen = () => console.log("WebSocket connected");
+            ws.onmessage = handleWebSocketMessage;
+            ws.onclose = () => console.log("WebSocket disconnected");
+        }
+
+        // Clear the Charts and Stored Data
+        function clearData() {
+            angleChart.data.labels = [];
+            angleChart.data.datasets.forEach(dataset => (dataset.data = []));
+            angleChart.update();
+
+            positionChart.data.labels = [];
+            positionChart.data.datasets.forEach(dataset => (dataset.data = []));
+            positionChart.update();
+
+            speedChart.data.labels = [];
+            speedChart.data.datasets.forEach(dataset => (dataset.data = []));
+            speedChart.update();
+
+            dataStorage.angle = [];
+            dataStorage.position = [];
+            dataStorage.speed = [];
+        }
+
+        // Export Data to CSV
+        function exportDataToCSV() {
+            let csvContent = "data:text/csv;charset=utf-8,";
+            csvContent += "Metric,Time,Setpoint,Input,Output\n";
+
+            // Append angle data
+            dataStorage.angle.forEach(row => {
+                csvContent += `Angle,${row.join(",")}\n`;
+            });
+
+            // Append position data
+            dataStorage.position.forEach(row => {
+                csvContent += `Position,${row.join(",")}\n`;
+            });
+
+            // Append speed data
+            dataStorage.speed.forEach(row => {
+                csvContent += `Speed,${row.join(",")}\n`;
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "esp32_data.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // Attach Event Listeners to Buttons
+        document.getElementById("startBtn").addEventListener("click", startWebSocket);
+        document.getElementById("clearBtn").addEventListener("click", clearData);
+        document.getElementById("exportBtn").addEventListener("click", exportDataToCSV);
+    </script>
+</body>
+</html>

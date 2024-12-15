@@ -31,6 +31,10 @@ float avgSpeedInput = 0, stepperLSpeed = 0, stepperRSpeed = 0, steer = 0;
 float filteredStepperLSpeed = 0, filteredStepperRSpeed = 0;
 float alphaSpeed = 0.9;
 
+unsigned long lastWebSocketSend = 0;
+const unsigned long webSocketInterval = 100; // Send updates every 100ms (10Hz)
+
+
 // PID instances  
 PID pid_angle(&input_angle, &output_angle, &setpoint_angle, Kp_angle, Ki_angle, Kd_angle, 1, REVERSE); 
 PID pid_pos(&input_pos, &output_pos, &setpoint_pos, Kp_pos, Ki_pos, Kd_pos, 1, REVERSE);  
@@ -65,10 +69,10 @@ void setup() {
     Serial.begin(SERIAL_BAUD);  
 
     // Initialize SPIFFS  
-    if (!SPIFFS.begin(true)) {  
-        Serial.println("Failed to mount SPIFFS!");  
-        while (1);  
-    }  
+    // if (!SPIFFS.begin(true)) {  
+    //     Serial.println("Failed to mount SPIFFS!");  
+    //     while (1);  
+    // }  
 
     // Initialize IMU  
     imu.initialize();  
@@ -144,8 +148,8 @@ void loop() {
     stepperRSpeed = output_angle - steer;  // speed in rpm
 
     // low-pass fileter for speed
-    filteredStepperLSpeed = alphaSpeed * filteredStepperLSpeed + (1 - alphaSpeed) * stepperLSpeed;
-    filteredStepperRSpeed = alphaSpeed * filteredStepperLSpeed + (1 - alphaSpeed) * stepperLSpeed;
+    filteredStepperLSpeed = (1 - alphaSpeed) * filteredStepperLSpeed + (alphaSpeed) * stepperLSpeed;
+    filteredStepperRSpeed = (1 - alphaSpeed) * filteredStepperLSpeed + (alphaSpeed) * stepperLSpeed;
 
     if (near(steer, 0, 1)) {
         filteredStepperLSpeed = filteredStepperRSpeed;
@@ -173,18 +177,13 @@ void loop() {
     unsigned long currentMillis = millis();
     if (currentMillis - previousMillis >= interval) {
         previousMillis = currentMillis;
-        Serial.print("Input: ");
-        Serial.print(input_angle);
-
-        Serial.print(", Output: ");
-        Serial.print(stepperLSpeed);
-        Serial.print(", ");
-        Serial.println(stepperRSpeed);
 
         // Emergency stop if tilt angle exceeds safety limits  
         if (abs(input_angle) > EMERGENCY_STOP_ANGLE) {  
-            stepperL->stopMove();
-            stepperR->stopMove();
+            stepperL->setSpeedInHz(1);
+            stepperL->runForward();
+            stepperR->setSpeedInHz(1);
+            stepperR->runBackward();
             Serial.println("Emergency Stop: Tilt angle exceeded safety limits!");  
         }  
         if (WiFi.status() != WL_CONNECTED) {
@@ -326,14 +325,16 @@ void setupWiFi() {
 
 
 void setupWebServer() {  
-    // Serve the index.html file  
-    server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {  
-        request->send(SPIFFS, "/index.html", "text/html");  
-    });  
+    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
 
-    server.on("/plot", HTTP_GET, [](AsyncWebServerRequest* request) {
-        request->send(SPIFFS, "/plot.html", "text/html");
-    });
+    // Serve the index.html file  
+    // server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {  
+    //     request->send(SPIFFS, "/index.html", "text/html");  
+    // });  
+
+    // server.on("/plot", HTTP_GET, [](AsyncWebServerRequest* request) {
+    //     request->send(SPIFFS, "/plot.html", "text/html");
+    // });
 
     // Handle PID updates
     server.on("/pid", HTTP_POST, [](AsyncWebServerRequest* request) {
@@ -502,29 +503,34 @@ void setupWebServer() {
 }  
 
 void sendWebSocketData() {
-    if (ws.count() > 0) {
-        JsonDocument json;
+    unsigned long currentMillis = millis();
+    if (currentMillis - lastWebSocketSend >= webSocketInterval) {
+        lastWebSocketSend = currentMillis;
 
-        json["time"] = millis() / 1000.0;
-        json["angle"]["setpoint"] = setpoint_angle;
-        json["angle"]["input"] = input_angle;
-        json["angle"]["output"] = output_angle;
+        if (ws.count() > 0) {
+            JsonDocument json;
 
-        json["position"]["setpoint"] = setpoint_pos;
-        json["position"]["input"] = input_pos;
-        json["position"]["output"] = output_pos;
+            json["time"] = millis() / 1000.0;
+            json["angle"]["setpoint"] = setpoint_angle;
+            json["angle"]["input"] = input_angle;
+            json["angle"]["output"] = output_angle;
 
-        json["speed"]["setpoint"] = setpoint_speed;
-        json["speed"]["input"] = input_speed;
-        json["speed"]["output"] = output_speed;
+            json["position"]["setpoint"] = setpoint_pos;
+            json["position"]["input"] = input_pos;
+            json["position"]["output"] = output_pos;
 
-        json["motor"]["left_speed"] = stepperLSpeed;
-        json["motor"]["right_speed"] = stepperRSpeed;
-        json["robot_position"] = getRobotPos(stepperL, stepperR);
+            json["speed"]["setpoint"] = setpoint_speed;
+            json["speed"]["input"] = input_speed;
+            json["speed"]["output"] = output_speed;
 
-        String message;
-        serializeJson(json, message);
-        ws.textAll(message);
+            json["motor"]["left_speed"] = stepperLSpeed;
+            json["motor"]["right_speed"] = stepperRSpeed;
+            json["robot_position"] = getRobotPos(stepperL, stepperR);
+
+            String message;
+            serializeJson(json, message);
+            ws.textAll(message);
+        }
     }
 }
 

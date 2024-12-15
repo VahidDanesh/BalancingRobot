@@ -20,6 +20,9 @@
             },
         };
 
+        const ESP32_IP = 'http://192.168.65.216'; 
+
+
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -382,7 +385,7 @@
     <script>
         // Function to send commands to the robot
         function sendCommand(command) {
-            fetch(`/command?cmd=${command}`)
+            fetch(`${ESP32_IP}/command?cmd=${command}`)
                 .then(response => response.text())
                 .then(data => {
                     updateStatus(`Command sent: ${command}`);
@@ -397,12 +400,12 @@
             const value = parseFloat(slider.value).toFixed(2);
             document.getElementById(valueId).textContent = value;
             
-            // Debounce the server update
-            clearTimeout(slider.timeout);
-            slider.timeout = setTimeout(() => {
-                updatePID();
-            }, 500);
-        }
+        //     // Debounce the server update
+        //     clearTimeout(slider.timeout);
+        //     slider.timeout = setTimeout(() => {
+        //         updatePID();
+        //     }, 500);
+         }
 
 
 
@@ -416,7 +419,7 @@
             const urlParams = new URLSearchParams({ type: pidType, ...pidValues }).toString();
 
 
-            fetch(`/pid?${urlParams}`, { method: 'POST' })
+            fetch(`${ESP32_IP}/pid?${urlParams}`, { method: 'POST' })
                 .then((response) => {
                     if (response.ok) {
                         updateStatus(`${pidType.toUpperCase()} PID values updated successfully!`);
@@ -434,7 +437,7 @@
             //console.log('Sending JSON:', JSON.stringify(pidValues));
 
             // Send the PID values to the server
-        //     fetch('/pid', {
+        //     fetch('${ESP32_IP}/pid', {
         //         method: 'POST',
         //         headers: {
         //             'Content-Type': 'application/json',
@@ -455,7 +458,7 @@
         
         // Fetch the current controller type from the board when the page loads
         function fetchCurrentControllerType() {
-            fetch('/controller?get=current')
+            fetch(`${ESP32_IP}/controller?get=current`)
                 .then(response => response.text())
                 .then(currentType => {
                     const controllerTypeSelect = document.getElementById('controllerType');
@@ -473,7 +476,7 @@
             const controllerType = document.getElementById('controllerType').value;
 
             // Send the selected controller type to the board
-            fetch(`/controller?set=${controllerType}`, {
+            fetch(`${ESP32_IP}/controller?set=${controllerType}`, {
                 method: 'GET',
             })
                 .then(response => {
@@ -498,7 +501,7 @@
             // Add active class to selected mode button
             event.target.classList.add('active');
 
-            fetch(`/mode?set=${mode}`)
+            fetch(`${ESP32_IP}/mode?set=${mode}`)
                 .then(response => response.text())
                 .then(data => {
                     updateStatus(`Mode changed to: ${mode}`);
