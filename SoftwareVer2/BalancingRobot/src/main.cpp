@@ -15,7 +15,7 @@
 
 uint8_t controlMode = PID_ANGLE; // Default to angle+position control  
 unsigned long previousMillis = 0;
-const unsigned long interval = 1000;
+const unsigned long interval = 100;
 
 // PID tuning parameters  
 float Kp_angle = 5.0, Ki_angle = 0.0, Kd_angle = 0.3;  
@@ -29,10 +29,29 @@ float input_speed = 0, output_speed = 0, setpoint_speed = 0;
 
 float avgSpeedInput = 0, stepperLSpeed = 0, stepperRSpeed = 0, steer = 0;
 float filteredStepperLSpeed = 0, filteredStepperRSpeed = 0;
-float alphaSpeed = 0.9;
+float alphaSpeed = 0.996;
 
 unsigned long lastWebSocketSend = 0;
 const unsigned long webSocketInterval = 100; // Send updates every 100ms (10Hz)
+
+union WebSocketData {
+    struct {
+        float time;
+        float angle_setpoint;
+        float angle_input;
+        float angle_output;
+        float position_setpoint;
+        float position_input;
+        float position_output;
+        float speed_setpoint;
+        float speed_input;
+        float speed_output;
+        float motor_left_speed;
+        float motor_right_speed;
+        float robot_position;
+    } data;
+    uint8_t bytes[sizeof(data)];
+};
 
 
 // PID instances  
@@ -120,8 +139,8 @@ void setup() {
     // pid_speed.SetOutputLimits(-MAX_TILT_ANGLE, MAX_TILT_ANGLE);  
 
     pid_angle.SetSampleTime(5);  // 200 Hz 
-    pid_pos.SetSampleTime(100);  // 10 Hz
-    pid_speed.SetSampleTime(100);  // 10 Hz
+    pid_pos.SetSampleTime(10);  // 10 Hz
+    pid_speed.SetSampleTime(10);  // 10 Hz
 
     // Setup WiFi and Web Server  
     setupWiFi();  
@@ -177,13 +196,24 @@ void loop() {
     unsigned long currentMillis = millis();
     if (currentMillis - previousMillis >= interval) {
         previousMillis = currentMillis;
+        // print pos, input and output
+        Serial.print("Input Pos: ");
+        Serial.print(getRobotPos());
+        Serial.print(" Output Pos: ");
+        Serial.print(output_pos);
+        Serial.print(" Input Speed");
+        Serial.print(input_speed);
+        Serial.print(" Output Speed");
+        Serial.print(output_speed);
+        Serial.print(" Input angle: ");
+        Serial.print(input_angle);
+        Serial.print(" Output angle: ");
+        Serial.println(output_angle);
 
         // Emergency stop if tilt angle exceeds safety limits  
         if (abs(input_angle) > EMERGENCY_STOP_ANGLE) {  
-            stepperL->setSpeedInHz(1);
-            stepperL->runForward();
-            stepperR->setSpeedInHz(1);
-            stepperR->runBackward();
+            stepperL->stopMove();
+            stepperR->stopMove();
             Serial.println("Emergency Stop: Tilt angle exceeded safety limits!");  
         }  
         if (WiFi.status() != WL_CONNECTED) {
@@ -204,7 +234,7 @@ void updateControlMode() {
 
         case PID_POS:
             // Position control
-            pid_speed.Compute();
+            // pid_speed.Compute();
             setpoint_pos = avgSpeedInput; //output_speed;  // Speed controller sets position target
             input_pos = getRobotPos();
             
@@ -499,43 +529,70 @@ void setupWebServer() {
         request->send(404, "text/plain", "Not Found");
         request->client()->close(); // Close idle connections
     });
-    // Start the server  
+
     server.addHandler(&ws);
     server.begin();  
     Serial.println("Web Server started.");  
 }  
 
+// void sendWebSocketData() {
+//     unsigned long currentMillis = millis();
+//     if (currentMillis - lastWebSocketSend >= webSocketInterval) {
+//         lastWebSocketSend = currentMillis;
+
+//         if (ws.count() > 0) {
+//             JsonDocument json;
+
+//             json["time"] = millis() / 1000.0;
+//             json["angle"]["setpoint"] = setpoint_angle;
+//             json["angle"]["input"] = input_angle;
+//             json["angle"]["output"] = output_angle;
+
+//             json["position"]["setpoint"] = setpoint_pos;
+//             json["position"]["input"] = input_pos;
+//             json["position"]["output"] = output_pos;
+
+//             json["speed"]["setpoint"] = setpoint_speed;
+//             json["speed"]["input"] = input_speed;
+//             json["speed"]["output"] = output_speed;
+
+//             json["motor"]["left_speed"] = stepperLSpeed;
+//             json["motor"]["right_speed"] = stepperRSpeed;
+//             json["robot_position"] = getRobotPos();
+
+//             String message;
+//             serializeJson(json, message);
+//             ws.textAll(message);
+//         }
+//     }
+// }
+
 void sendWebSocketData() {
     unsigned long currentMillis = millis();
     if (currentMillis - lastWebSocketSend >= webSocketInterval) {
         lastWebSocketSend = currentMillis;
+        static WebSocketData wsData;
+        wsData.data.time = millis() / 1000.0f;
+        wsData.data.angle_setpoint = setpoint_angle;
+        wsData.data.angle_input = input_angle;
+        wsData.data.angle_output = output_angle;
+        wsData.data.position_setpoint = setpoint_pos;
+        wsData.data.position_input = input_pos;
+        wsData.data.position_output = output_pos;
+        wsData.data.speed_setpoint = setpoint_speed;
+        wsData.data.speed_input = input_speed;
+        wsData.data.speed_output = output_speed;
+        wsData.data.motor_left_speed = stepperLSpeed;
+        wsData.data.motor_right_speed = stepperRSpeed;
+        wsData.data.robot_position = getRobotPos();
 
         if (ws.count() > 0) {
-            JsonDocument json;
-
-            json["time"] = millis() / 1000.0;
-            json["angle"]["setpoint"] = setpoint_angle;
-            json["angle"]["input"] = input_angle;
-            json["angle"]["output"] = output_angle;
-
-            json["position"]["setpoint"] = setpoint_pos;
-            json["position"]["input"] = input_pos;
-            json["position"]["output"] = output_pos;
-
-            json["speed"]["setpoint"] = setpoint_speed;
-            json["speed"]["input"] = input_speed;
-            json["speed"]["output"] = output_speed;
-
-            json["motor"]["left_speed"] = stepperLSpeed;
-            json["motor"]["right_speed"] = stepperRSpeed;
-            json["robot_position"] = getRobotPos();
-
-            String message;
-            serializeJson(json, message);
-            ws.textAll(message);
+            ws.binaryAll(wsData.bytes, sizeof(wsData.bytes));
         }
     }
 }
+
+
 
 void setupOTA() {
     ArduinoOTA.setHostname("robot"); // Optional, set a custom hostname

@@ -1,0 +1,123 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+    <title>Real-Time Plot</title>
+    <script>
+        const ESP32_IP = '192.168.65.216'; // Replace with your ESP32's IP address
+    </script>
+    
+</head>
+<body>
+    <canvas id="chartContainer" height="300px" width="800px" style="border:1px solid #d3d3d3;"></canvas><br />
+
+    <button name="plotStart" onclick="plotStartStop(true)" style="width:80px">Start</button>
+    <button name="plotStop" onclick="plotStartStop(false)" style="width:80px">Stop</button>
+    <button name="plotClear" onclick="clearPlot()" style="width:80px">Clear</button><br /><br />
+
+    <fieldset style="width:300px">
+        Signals to plot<br />
+        <input type="checkbox" name="plotOption" id="angleSetpoint" onchange="updatePlotOptions()">PID Angle Setpoint<br />
+        <input type="checkbox" name="plotOption" id="angleInput" onchange="updatePlotOptions()">PID Angle Input<br />
+        <input type="checkbox" name="plotOption" id="angleOutput" onchange="updatePlotOptions()">PID Angle Output<br />
+        <input type="checkbox" name="plotOption" id="positionSetpoint" onchange="updatePlotOptions()">PID Position Setpoint<br />
+        <input type="checkbox" name="plotOption" id="positionInput" onchange="updatePlotOptions()">PID Position Input<br />
+        <input type="checkbox" name="plotOption" id="positionOutput" onchange="updatePlotOptions()">PID Position Output<br />
+        <input type="checkbox" name="plotOption" id="speedSetpoint" onchange="updatePlotOptions()">PID Speed Setpoint<br />
+        <input type="checkbox" name="plotOption" id="speedInput" onchange="updatePlotOptions()">PID Speed Input<br />
+        <input type="checkbox" name="plotOption" id="speedOutput" onchange="updatePlotOptions()">PID Speed Output<br />
+        <input type="checkbox" name="plotOption" id="leftMotorSpeed" onchange="updatePlotOptions()">Left Motor Speed<br />
+        <input type="checkbox" name="plotOption" id="rightMotorSpeed" onchange="updatePlotOptions()">Right Motor Speed<br />
+        <input type="checkbox" name="plotOption" id="robotPosition" onchange="updatePlotOptions()">Robot Position<br />
+    </fieldset>
+
+    <fieldset style="width:300px">
+        <legend>Logging</legend>
+        <input type="checkbox" id="logEnable">Enable Logging<br /><br />
+        Time elapsed [s]: <label id="logDuration">0</label><br /><br />
+        <button id="logClear" onclick="clearLogData()">Clear</button>
+        <button id="logExport" onclick="exportLogData()">Export</button>
+    </fieldset>
+
+    <script>
+        const canvas = document.getElementById('chartContainer');
+        const ctx = canvas.getContext('2d');
+        const ws = new WebSocket(`ws://${ESP32_IP}/ws`);
+        const nSignals = 13; 
+        const colors = ["red", "blue", "green", "orange", "purple"];
+        let dataBuffer = Array.from({ length: nSignals }, () => Array(500).fill(0));
+        let logBuffer = Array.from({ length: nSignals }, () => []);
+        let plotting = false;
+        let enabledPlots = [];
+        let sampleRate = 10;
+
+        ws.onmessage = (event) => {
+            if (plotting) {
+                const buffer = new DataView(event.data);
+                const signals = Array(13).fill(0).map((_, i) => buffer.getFloat32(i * 4, true));
+                signals.forEach((value, index) => {
+                    dataBuffer[index].push(value);
+                    if (dataBuffer[index].length > 500) {
+                        dataBuffer[index].shift(); // Maintain buffer size
+                    }
+                    if (document.getElementById('logEnable').checked) {
+                        logBuffer[index].push(value);
+                    }
+                });
+                drawChart();
+                ws.send("pong");
+            }
+        };
+        function drawChart() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            enabledPlots.forEach((index, plotIdx) => {
+                ctx.beginPath();
+                dataBuffer[index].forEach((val, i) => {
+                    const x = (i / 500) * canvas.width;
+                    const y = canvas.height - ((val + 50) / 100) * canvas.height; // Normalize value
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                });
+                ctx.strokeStyle = colors[plotIdx % colors.length];
+                ctx.stroke();
+            });
+        }
+
+        function updatePlotOptions() {
+            enabledPlots = [];
+            document.querySelectorAll("input[name='plotOption']").forEach((checkbox, idx) => {
+                if (checkbox.checked) {
+                    enabledPlots.push(idx);
+                }
+            });
+        }
+
+        function plotStartStop(start) {
+            plotting = start;
+        }
+
+        function clearPlot() {
+            dataBuffer = Array.from({ length: nSignals }, () => Array(500).fill(0));
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function clearLogData() {
+            logBuffer = Array.from({ length: nSignals }, () => []);
+            document.getElementById('logDuration').innerText = '0';
+        }
+
+        function exportLogData() {
+            const csvContent = logBuffer[0]
+                .map((_, idx) => logBuffer.map((signal) => signal[idx] || 0).join(","))
+                .join("\n");
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = "log_data.csv";
+            link.click();
+        }
+    </script>
+</body>
+</html>
