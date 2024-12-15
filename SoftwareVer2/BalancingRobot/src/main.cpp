@@ -7,6 +7,7 @@
 #include <ESPAsyncWebServer.h>  
 #include <AsyncTCP.h>  
 #include <SPIFFS.h>  
+#include <ArduinoOTA.h>
 #include "config.h"  
 #include "IMUHandler.h"  
 
@@ -58,6 +59,7 @@ float getRobotSpeed(FastAccelStepper* stepperL, FastAccelStepper* stepperR);
 bool near(float a, float b, float tolerance);
 void setRobotSpeed(float stepperLSpeed, float stepperRSpeed);
 void updateControlMode();  
+void setupOTA();
 
 void setup() {  
     Serial.begin(SERIAL_BAUD);  
@@ -120,6 +122,7 @@ void setup() {
     // Setup WiFi and Web Server  
     setupWiFi();  
     setupWebServer();  
+    setupOTA();
 
     Serial.println("System Initialized. Use Serial or Web Interface to adjust parameters.");  
 }  
@@ -160,7 +163,10 @@ void loop() {
     } else {
         stepperR->runForward();
     }
- 
+    
+
+    sendWebSocketData();
+    ArduinoOTA.handle(); // Handle OTA updates
 
 
 
@@ -187,18 +193,6 @@ void loop() {
             WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
         }
     }
-    sendWebSocketData();
-
-    
-    // // Print data for debugging  
-    // Serial.print("Control Mode: ");  
-    // Serial.print(controlMode);  
-    // Serial.print(", Input: ");  
-    // Serial.print(input_angle);  
-    // Serial.print(", Output: ");  
-    // Serial.println(output_angle);  
-
-    // delay(10); // Adjust loop frequency as needed  
 }  
 
 void updateControlMode() {
@@ -532,4 +526,38 @@ void sendWebSocketData() {
         serializeJson(json, message);
         ws.textAll(message);
     }
+}
+
+void setupOTA() {
+    ArduinoOTA.setHostname("robot"); // Optional, set a custom hostname
+    ArduinoOTA.setPassword(WIFI_PASSWORD); // Optional, set a password for OTA updates
+
+    // What to do before OTA starts
+    ArduinoOTA.onStart([]() {
+        String type = (ArduinoOTA.getCommand() == U_FLASH) ? "sketch" : "filesystem";
+        Serial.println("OTA Start: " + type);
+    });
+
+    // What to do when OTA ends
+    ArduinoOTA.onEnd([]() {
+        Serial.println("\nOTA End");
+    });
+
+    // OTA progress
+    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+        Serial.printf("Progress: %u%%\r", (progress * 100) / total);
+    });
+
+    // OTA error handling
+    ArduinoOTA.onError([](ota_error_t error) {
+        Serial.printf("Error[%u]: ", error);
+        if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+        else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+        else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+        else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+        else if (error == OTA_END_ERROR) Serial.println("End Failed");
+    });
+
+    ArduinoOTA.begin();
+    Serial.println("OTA Ready. IP Address: " + WiFi.localIP().toString());
 }
