@@ -17,39 +17,41 @@ class PID
   #define P_ON_E 1
 
   //commonly used functions **************************************************************************
-    PID(float*, float*, float*,        // * constructor.  links the PID to the Input, Output, and 
+  PID(float*, float*, float*,        // * constructor.  links the PID to the Input, Output, and 
         float, float, float, int, int);//   Setpoint.  Initial tuning parameters are also set here.
                                           //   (overload for specifying proportional mode)
 
-    PID(float*, float*, float*,        // * constructor.  links the PID to the Input, Output, and 
+  PID(float*, float*, float*,        // * constructor.  links the PID to the Input, Output, and 
         float, float, float, int);     //   Setpoint.  Initial tuning parameters are also set here
 	
-    void SetMode(int Mode);               // * sets PID to either Manual (0) or Auto (non-0)
+  void SetMode(int Mode);               // * sets PID to either Manual (0) or Auto (non-0)
 
-    bool Compute();                       // * performs the PID calculation.  it should be
+  bool Compute();                       // * performs the PID calculation.  it should be
                                           //   called every time loop() cycles. ON/OFF and
                                           //   calculation frequency can be set using SetMode
                                           //   SetSampleTime respectively
 
-    void SetOutputLimits(float, float); // * clamps the output to a specific range. 0-255 by default, but
+  void SetOutputLimits(float, float); // * clamps the output to a specific range. 0-255 by default, but
 										                      //   it's likely the user will want to change this depending on
 										                      //   the application
 	
 
 
   //available but not commonly used functions ********************************************************
-    void SetTunings(float, float,       // * While most users will set the tunings once in the 
+  void SetTunings(float, float,       // * While most users will set the tunings once in the 
                     float);         	    //   constructor, this function gives the user the option
                                           //   of changing tunings during runtime for Adaptive control
-    void SetTunings(float, float,       // * overload for specifying proportional mode
+  void SetTunings(float, float,       // * overload for specifying proportional mode
                     float, int);         	  
 
 	void SetControllerDirection(int);	  // * Sets the Direction, or "Action" of the controller. DIRECT
 										  //   means the output will increase when error is positive. REVERSE
 										  //   means the opposite.  it's very unlikely that this will be needed
 										  //   once it is set in the constructor.
-    void SetSampleTime(int);              // * sets the frequency, in Milliseconds, with which 
+  void SetSampleTime(int);              // * sets the frequency, in Milliseconds, with which 
                                           //   the PID calculation is performed.  default is 100
+  
+  void Reset(); // Reset to prevent windup
 										  
 										  
 										  
@@ -85,6 +87,7 @@ class PID
 	unsigned long SampleTime;
 	float outMin, outMax;
 	bool inAuto, pOnE;
+  
 };
 #endif
 

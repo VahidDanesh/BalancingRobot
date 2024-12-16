@@ -1,6 +1,6 @@
 #include <Arduino.h>  
-#include <FastAccelStepper.h>  
-#include <PID_v1.h>  
+#include <FastAccelStepper.h>   
+#include <QuickPID.h>
 #include <WiFi.h>  
 #include <ESPmDNS.h>
 #include <ArduinoJson.h>
@@ -35,6 +35,8 @@ float alphaSpeed = 0.9;
 unsigned long lastWebSocketSend = 0;
 const unsigned long webSocketInterval = 100; // Send updates every 100ms (10Hz)
 
+bool calibrateToggle = false;
+
 union WebSocketData {
     struct {
         float time;
@@ -56,9 +58,22 @@ union WebSocketData {
 
 
 // PID instances  
-PID pid_angle(&input_angle, &output_angle, &setpoint_angle, Kp_angle, Ki_angle, Kd_angle, 1, REVERSE); 
-PID pid_pos(&input_pos, &output_pos, &setpoint_pos, Kp_pos, Ki_pos, Kd_pos, 1, DIRECT);  
-PID pid_speed(&input_speed, &output_speed, &setpoint_speed, Kp_speed, Ki_speed, Kd_speed, 1, DIRECT);  
+// PID pid_angle(&input_angle, &output_angle, &setpoint_angle, Kp_angle, Ki_angle, Kd_angle, 1, REVERSE); 
+// PID pid_pos(&input_pos, &output_pos, &setpoint_pos, Kp_pos, Ki_pos, Kd_pos, 1, DIRECT);  
+// PID pid_speed(&input_speed, &output_speed, &setpoint_speed, Kp_speed, Ki_speed, Kd_speed, 1, DIRECT);  
+QuickPID pid_angle(&input_angle, &output_angle, &setpoint_angle, 
+                    Kp_angle, Ki_angle, Kd_angle, 
+                    pid_angle.Action::reverse);
+
+QuickPID pid_pos(&input_pos, &output_pos, &setpoint_pos, 
+                    Kp_pos, Ki_pos, Kd_pos, 
+                    pid_pos.Action::direct);
+
+QuickPID pid_speed(&input_speed, &output_speed, &setpoint_speed,
+                    Kp_speed, Ki_speed, Kd_speed,
+                    pid_speed.Action::direct);
+
+
 
 // Stepper instances  
 FastAccelStepperEngine engine;  
@@ -97,7 +112,7 @@ void setup() {
 
     // Initialize IMU  
     imu.initialize();  
-    imu.calibrate(true);  
+    imu.calibrate(calibrateToggle);  
 
     // Initialize stepper engine  
     engine.init();
@@ -132,17 +147,18 @@ void setup() {
 
 
     // Initialize PID controllers  
-    pid_angle.SetMode(AUTOMATIC);  
-    pid_pos.SetMode(AUTOMATIC);  
-    pid_speed.SetMode(AUTOMATIC);  
+    pid_angle.SetMode(pid_angle.Control::automatic);  
+    pid_pos.SetMode(pid_pos.Control::automatic);  
+    pid_speed.SetMode(pid_speed.Control::automatic);
+  
 
     pid_angle.SetOutputLimits(-MAX_SPEED_RPM, MAX_SPEED_RPM);  
-    pid_pos.SetOutputLimits(-MAX_TILT_ANGLE/10, MAX_TILT_ANGLE/10);  
-    pid_speed.SetOutputLimits(-MAX_TILT_ANGLE/10, MAX_TILT_ANGLE/10);  
+    pid_pos.SetOutputLimits(-MAX_TILT_ANGLE, MAX_TILT_ANGLE);  
+    pid_speed.SetOutputLimits(-MAX_TILT_ANGLE, MAX_TILT_ANGLE);  
 
-    pid_angle.SetSampleTime(5);  // 200 Hz 
-    pid_pos.SetSampleTime(5);  // 200 Hz
-    pid_speed.SetSampleTime(5);  // 200 Hz
+    pid_angle.SetSampleTimeUs(5 * 1000);  // 200 Hz 
+    pid_pos.SetSampleTimeUs(5 * 1000);  // 200 Hz
+    pid_speed.SetSampleTimeUs(5 * 1000);  // 200 Hz
 
     // Setup WiFi and Web Server  
     setupWiFi();  
@@ -243,7 +259,7 @@ void updateControlMode() {
             
 
             pid_pos.Compute();
-            setpoint_angle = output_pos * 10; // Position controller sets angle target, output position in m and angle in deg
+            setpoint_angle = output_pos; // Position controller sets angle target, output position in m and angle in deg
             pid_angle.Compute();
             break;
 
@@ -251,7 +267,7 @@ void updateControlMode() {
             // Speed control
             setpoint_speed = avgSpeedInput;  // Speed controller sets speed target
             pid_speed.Compute();
-            setpoint_angle = output_speed * 10;  // Speed controller sets angle target, output speed in m/s and angle in deg
+            setpoint_angle = output_speed;  // Speed controller sets angle target, output speed in m/s and angle in deg
             pid_angle.Compute();
             break;
     }
@@ -494,18 +510,22 @@ void setupWebServer() {
         // Handle setting a new mode
         if (request->hasParam("set")) {
             String mode = request->getParam("set")->value();
+            
             if (mode == "angle") {
                 controlMode = PID_ANGLE;
+                pid_angle.Reset();
                 request->send(200, "text/plain", "Mode set to Angle");
                 Serial.println("Mode set to Angle");
             } else if (mode == "pos") {
                 stepperL->setCurrentPosition(0);
                 stepperR->setCurrentPosition(0);
                 controlMode = PID_POS;
+                pid_pos.Reset();
                 request->send(200, "text/plain", "Mode set to Position");
                 Serial.println("Mode set to Position");
             } else if (mode == "speed") {
                 controlMode = PID_SPEED;
+                pid_speed.Reset();
                 request->send(200, "text/plain", "Mode set to Speed");
                 Serial.println("Mode set to Speed");
             } else {
@@ -528,6 +548,18 @@ void setupWebServer() {
             request->send(200, "text/plain", "Alpha Speed updated successfully");
         } else {
             request->send(400, "text/plain", "Missing value parameter");
+        }
+    });
+
+    server.on("/calibrate", HTTP_GET, [](AsyncWebServerRequest* request) {
+        if (request->hasParam("toggle")) {
+            calibrateToggle = true;
+            imu.initialize();
+            imu.calibrate(calibrateToggle);
+            request->send(200, "text/plain", "Calibration toggled");
+            Serial.println("Calibration Done");
+        } else {
+            request->send(400, "text/plain", "Missing toggle parameter");
         }
     });
 
@@ -607,10 +639,10 @@ void sendWebSocketData() {
         wsData.data.angle_output = output_angle / 4; //pid * deg
         wsData.data.position_setpoint = setpoint_pos * 100; //cm 
         wsData.data.position_input = input_pos * 100;
-        wsData.data.position_output = output_pos / (MAX_TILT_ANGLE/10) * 100;
+        wsData.data.position_output = output_pos / (MAX_TILT_ANGLE) * 100;
         wsData.data.speed_setpoint = setpoint_speed * 100;
         wsData.data.speed_input = input_speed * 100;
-        wsData.data.speed_output = output_speed / (MAX_TILT_ANGLE/10) * 100;
+        wsData.data.speed_output = output_speed / (MAX_TILT_ANGLE) * 100;
         wsData.data.motor_left_speed = filteredStepperLSpeed / MAX_SPEED_RPM * 100; //rpm
         wsData.data.motor_right_speed = filteredStepperRSpeed / MAX_SPEED_RPM * 100; //rpm
         wsData.data.robot_position = getRobotPos() * 100;

@@ -77,7 +77,7 @@ void IMUHandler::calibrate(bool force) {
     Serial.println("Starting calibration...");
     Serial.println("Please hold the sensor still and level.");
 
-    delay(3150); // Give the user time to stabilize the sensor
+    delay(3150*2); // Give the user time to stabilize the sensor
 
     if (force) {
     // Calibrate accelerometer and gyroscope
@@ -100,12 +100,12 @@ void IMUHandler::calibrate(bool force) {
         // use the calibration offset from PID calibration
         // see https://github.com/jrowberg/i2cdevlib/blob/master/Arduino/MPU6050/examples/IMU_Zero/IMU_Zero.ino
         
-        mpu.setXAccelOffset(-2321);
-        mpu.setYAccelOffset(309);
-        mpu.setZAccelOffset(1047);
-        mpu.setXGyroOffset(169);
-        mpu.setYGyroOffset(-3);
-        mpu.setZGyroOffset(-1);
+        mpu.setXAccelOffset(-2298);
+        mpu.setYAccelOffset(315);
+        mpu.setZAccelOffset(1048);
+        mpu.setXGyroOffset(162);
+        mpu.setYGyroOffset(6);
+        mpu.setZGyroOffset(-2);
     }
 
     // print prompt to serial monitor

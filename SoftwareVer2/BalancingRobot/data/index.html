@@ -5,8 +5,8 @@
         const CONFIG = {
             pid: {
                 Kp_angle: { min: 0, max: 20, step: 0.1, default: 10.0 },
-                Ki_angle: { min: 0, max: 10, step: 0.1, default: 0.1 },
-                Kd_angle: { min: 0, max: 10, step: 0.1, default: 0.5 },
+                Ki_angle: { min: 0, max: 2, step: 0.01, default: 0.1 },
+                Kd_angle: { min: 0, max: 2, step: 0.01, default: 0.5 },
                 Kp_pos: { min: 0, max: 20, step: 0.5, default: 20.0 },
                 Ki_pos: { min: 0, max: 10, step: 0.1, default: 0.5 },
                 Kd_pos: { min: 0, max: 10, step: 0.1, default: 0.1 },
@@ -327,7 +327,7 @@
 
                 <label for="alphaSpeedInput">Set Pos and Alpha Speed:</label>
                 <input id="alphaSpeedInput" type="number" min="0" max="1" step="0.001" value="0.9">
-                <button onclick="updateParameters()">Set Alpha Speed</button>
+                <button onclick="updateParameters()">Set Pos and Alpha Speed</button>
             </div>
 
             <div class="pid-controls">
@@ -377,12 +377,14 @@
                         `);
                     });
                 </script>
+                <button onclick="calibrate()">Calibrate the Sensor</button>
             </div>
         </div>
 
         <!-- Status Display -->
         <div class="status" id="status">
             Status: Connected
+            
         </div>
     </div>
 
@@ -536,7 +538,21 @@
                 });
         }
 
-
+        function calibrate() {
+            fetch(`${ESP32_IP}/calibrate?toggle`, {
+                method: 'GET',
+            })
+                .then((response) => {
+                    if (response.ok) {
+                        updateStatus(`Calibration started.`);
+                    } else {
+                        updateStatus('Failed to start calibration.');
+                    }
+                })
+                .catch((error) => {
+                    updateStatus(`Error: ${error.message}`);
+                });
+        }
         // Function to update status display
         function updateStatus(message) {
             document.getElementById('status').textContent = `Status: ${message}`;
