@@ -4,15 +4,15 @@
     <script>
         const CONFIG = {
             pid: {
-                Kp_angle: { min: 0, max: 20, step: 0.1, default: 13.5 },
-                Ki_angle: { min: 0, max: 10, step: 0.01, default: 0.1 },
-                Kd_angle: { min: 0, max: 10, step: 0.01, default: 0.15 },
-                Kp_pos: { min: 0, max: 20, step: 0.5, default: 2 },
-                Ki_pos: { min: 0, max: 10, step: 0.01, default: 0.5 },
-                Kd_pos: { min: 0, max: 10, step: 0.01, default: 0.1 },
-                Kp_speed: { min: 0, max: 20, step: 0.5, default: 3 },
-                Ki_speed: { min: 0, max: 10, step: 0.01, default: 0.8 },
-                Kd_speed: { min: 0, max: 10, step: 0.01, default: 0.2 },
+                Kp_angle: { min: 0, max: 20, step: 0.1, default: 10.0 },
+                Ki_angle: { min: 0, max: 10, step: 0.1, default: 0.1 },
+                Kd_angle: { min: 0, max: 10, step: 0.1, default: 0.5 },
+                Kp_pos: { min: 0, max: 20, step: 0.5, default: 20.0 },
+                Ki_pos: { min: 0, max: 10, step: 0.1, default: 0.5 },
+                Kd_pos: { min: 0, max: 10, step: 0.1, default: 0.1 },
+                Kp_speed: { min: 0, max: 50, step: 0.5, default: 40.0 },
+                Ki_speed: { min: 0, max: 25, step: 0.1, default: 0.8 },
+                Kd_speed: { min: 0, max: 10, step: 0.1, default: 0.2 },
             },
             modes: {
                 available: ['manual', 'auto', 'debug'],
@@ -324,6 +324,10 @@
                     <option value="pos">Position</option>
                     <option value="speed">Speed</option>
                 </select>
+
+                <label for="alphaSpeedInput">Set Pos and Alpha Speed:</label>
+                <input id="alphaSpeedInput" type="number" min="0" max="1" step="0.001" value="0.9">
+                <button onclick="updateParameters()">Set Alpha Speed</button>
             </div>
 
             <div class="pid-controls">
@@ -510,6 +514,28 @@
                     updateStatus('Error changing mode');
                 });
         }
+
+        function updateParameters() {
+            const alphaSpeed = parseFloat(document.getElementById('alphaSpeedInput').value);
+            if (isNaN(alphaSpeed) || alphaSpeed < 0 || alphaSpeed > 1) {
+                alert("Please enter a valid alpha speed value between 0 and 1.");
+                return;
+            }
+            fetch(`${ESP32_IP}/setParam?value=${alphaSpeed}`, {
+                method: 'GET',
+            })
+                .then((response) => {
+                    if (response.ok) {
+                        updateStatus(`Alpha Speed updated to: ${alphaSpeed}`);
+                    } else {
+                        updateStatus('Failed to update Alpha Speed.');
+                    }
+                })
+                .catch((error) => {
+                    updateStatus(`Error: ${error.message}`);
+                });
+        }
+
 
         // Function to update status display
         function updateStatus(message) {

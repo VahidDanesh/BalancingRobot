@@ -81,11 +81,37 @@
         };
         function drawChart() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw y-axis gridlines and labels
+            const yMin = -100;
+            const yMax = 100;
+            const yStep = 20; // Increment for gridlines
+            const numGridlines = (yMax - yMin) / yStep;
+            
+            // Draw gridlines
+            for (let i = 0; i <= numGridlines; i++) {
+                const yValue = yMin + i * yStep;
+                const yPos = canvas.height - ((yValue - yMin) / (yMax - yMin)) * canvas.height;
+
+                // Draw gridline
+                ctx.beginPath();
+                ctx.moveTo(0, yPos);
+                ctx.lineTo(canvas.width, yPos);
+                ctx.strokeStyle = "#e0e0e0"; // Light gray gridlines
+                ctx.stroke();
+
+                // Draw label
+                ctx.fillStyle = "black";
+                ctx.font = "12px Arial";
+                ctx.fillText(yValue, 5, yPos - 2); // Adjust -2 for alignment
+            }
+
+            // Plot each selected signal
             enabledPlots.forEach((index, plotIdx) => {
                 ctx.beginPath();
                 dataBuffer[index].forEach((val, i) => {
-                    const x = (i / 500) * canvas.width;
-                    const y = canvas.height - ((val + 50) / 100) * canvas.height; // Normalize value
+                    const x = (i / 500) * canvas.width; // Scale x-coordinate
+                    const y = canvas.height - ((val - yMin) / (yMax - yMin)) * canvas.height; // Scale y-coordinate
                     if (i === 0) {
                         ctx.moveTo(x, y);
                     } else {
@@ -97,11 +123,12 @@
             });
         }
 
+
         function updatePlotOptions() {
             enabledPlots = [];
             document.querySelectorAll("input[name='plotOption']").forEach((checkbox, idx) => {
                 if (checkbox.checked) {
-                    enabledPlots.push(idx);
+                    enabledPlots.push(idx+1);
                 }
             });
         }
