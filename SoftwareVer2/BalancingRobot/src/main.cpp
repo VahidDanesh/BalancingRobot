@@ -126,14 +126,14 @@ void setup() {
     driver1.begin();
     driver1.toff(4);  // Enable SpreadCycle
     driver1.rms_current(1200); // Motor current in mA
-    driver1.microsteps(8);
+    driver1.microsteps(MICROSTEPS);
     driver1.en_spreadCycle(true);
 
     // Driver 2 Initialization
     driver2.begin();
     driver2.toff(4);  // Enable SpreadCycle
     driver2.rms_current(1200);
-    driver2.microsteps(8);
+    driver2.microsteps(MICROSTEPS);
     driver2.en_spreadCycle(true); 
 
     // Initialize SPIFFS  
