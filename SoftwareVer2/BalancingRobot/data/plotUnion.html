@@ -29,6 +29,7 @@
         <input type="checkbox" name="plotOption" id="leftMotorSpeed" onchange="updatePlotOptions()">Left Motor Speed<br />
         <input type="checkbox" name="plotOption" id="rightMotorSpeed" onchange="updatePlotOptions()">Right Motor Speed<br />
         <input type="checkbox" name="plotOption" id="robotPosition" onchange="updatePlotOptions()">Robot Position<br />
+        <input type="checkbox" name="plotOption" id="ultrasonic" onchange="updatePlotOptions()">Ultrasonc Sensor<br />
     </fieldset>
 
     <fieldset style="width:300px">
@@ -44,7 +45,7 @@
         const ctx = canvas.getContext('2d');
         const ws = new WebSocket(`ws://${window.location.hostname}:81`); // const ws = new WebSocket(`ws://${ESP32_IP}:81`);
         ws.binaryType = 'arraybuffer';
-        const nSignals = 14; 
+        const nSignals = 15; 
         const colors = ["red", "blue", "green", "orange", "purple"];
         let dataBuffer = Array.from({ length: nSignals }, () => Array(500).fill(0));
         let logBuffer = Array.from({ length: nSignals }, () => []);

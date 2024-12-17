@@ -334,7 +334,9 @@
                 <label for="Pos PID f [Hz]">Pos PID f [Hz]:</label>
                 <input id="Pos PID f [Hz]" type="number" min="0" max="500" step="10" value="20">
                 <label for="Speed PID f [Hz]">Speed PID f [Hz]:</label>
-                <input id="Speed PID f [Hz]" type="number" min="0" max="500" step="10" value="20">
+                <input id="Speed PID f [Hz]" type="number" min="0" max="500" step="10" value="20"> <br>
+                <label for="microStep">Microstep:</label>
+                <input id="microStep" type="number" min="0" max="256" step="1" value="16">
                 <button onclick="updateParameters()">Set Parameters</button>
                 
             </div>
@@ -558,8 +560,13 @@
                 alert("Please enter a valid Speed PID f value between 0 and 500.");
                 return;
             }
+            const microStep = parseFloat(document.getElementById('microStep').value);
+            if (isNaN(microStep) || microStep < 0 || microStep > 256) {
+                alert("Please enter a valid microstep value between 0 and 256.");
+                return;
+            }
 
-            fetch(`${ESP32_IP}/setParam?alphaSpeed=${alphaSpeed}&tau=${tau}&angleF=${Angle_PID_f}&posF=${Pos_PID_f}&speedF=${Speed_PID_f}`, {
+            fetch(`${ESP32_IP}/setParam?alphaSpeed=${alphaSpeed}&tau=${tau}&angleF=${Angle_PID_f}&posF=${Pos_PID_f}&speedF=${Speed_PID_f}&microStep=${microStep}`, {
                 method: 'GET',
             })
                 .then((response) => {

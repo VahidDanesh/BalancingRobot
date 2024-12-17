@@ -11,6 +11,7 @@
 #include <SPIFFS.h>  
 #include <ArduinoOTA.h>
 #include <Adafruit_NeoPixel.h>
+#include <Ultrasonic.h>
 #include "config.h"  
 #include "IMUHandler.h"  
 
@@ -43,11 +44,16 @@ float filteredStepperLSpeed = 0, filteredStepperRSpeed = 0;
 float alphaSpeed = 0.96;
 float tau = 0.5, lastTau = 0.5;
 bool stepperDisabled = false;
+uint16_t distance = 0;
 
 unsigned long lastWebSocketSend = 0;
 const unsigned long webSocketInterval = 100; // Send updates every 100ms (10Hz)
 
+const int buzzerPin = 35; // Define the pin connected to the buzzer
+
+
 Adafruit_NeoPixel neopixel = Adafruit_NeoPixel(1, NEOPIXEL_PIN);
+Ultrasonic ultrasonic(33, 32);	// An ultrasonic sensor HC-04 - Trig, Echo
 
 bool calibrateToggle = true;
 
@@ -67,6 +73,7 @@ union WebSocketData {
         float motor_left_speed;
         float motor_right_speed;
         float robot_position;
+        float ultrasonic_distance;
     } data;
     uint8_t bytes[sizeof(data)];
 };
@@ -142,6 +149,11 @@ void setup() {
         while (1);  
     }  
 
+    // set neopixel pin green
+    neopixel.begin();
+    neopixel.setPixelColor(0, neopixel.Color(0, 255, 0));
+    neopixel.show();
+
     // Initialize IMU  
     imu.initialize();  
     imu.calibrate(calibrateToggle);  
@@ -193,10 +205,18 @@ void setup() {
     pid_speed.SetSampleTimeUs(1000/speedF * 1000);  // 50 Hz
 
 
-    // set neopixel pin green
-    neopixel.begin();
-    neopixel.setPixelColor(0, neopixel.Color(0, 255, 0));
+    // init done
+    neopixel.setPixelColor(0, neopixel.Color(0, 0, 255));
     neopixel.show();
+
+
+
+    // pinMode(buzzerPin, OUTPUT); // Set the buzzer pin as an output
+
+    // tone(buzzerPin, 1000); // Play a 1kHz tone on the buzzer
+    // delay(500); // Wait for 0.5 seconds
+    // noTone(buzzerPin); // Stop the tone
+    // delay(500); // Wait for another 0.5 seconds
 
     
 
@@ -211,6 +231,8 @@ void setup() {
 void loop() {  
     // Process Serial commands  
     processSerialCommands();  
+
+    
  
 
     // Update IMU data  
@@ -256,10 +278,36 @@ void loop() {
     ws.loop(); // Handle WebSocket events
 
 
-
+    distance = alphaSpeed * distance + (1 - alphaSpeed) * ultrasonic.read(CM);
     unsigned long currentMillis = millis();
     if (currentMillis - previousMillis >= interval) {
         previousMillis = currentMillis;
+        
+        if (distance <= 20)
+        {
+            // tone(buzzerPin, 1000); // Play a 1kHz tone on the buzzer
+            // orange
+            neopixel.setPixelColor(0, neopixel.Color(255, 165, 0));
+            neopixel.show();
+        } else {
+            switch(controlMode) {
+                case (PID_ANGLE):
+                    // neopixel blue
+                    neopixel.setPixelColor(0, neopixel.Color(0, 0, 255));
+                    neopixel.show();
+                    break;
+                case (PID_POS):
+                    // neopixel yellow
+                    neopixel.setPixelColor(0, neopixel.Color(255, 255, 0));
+                    neopixel.show();
+                    break;
+                case (PID_SPEED):
+                    // neopixel purple
+                    neopixel.setPixelColor(0, neopixel.Color(128, 0, 128));
+                    neopixel.show();
+                    break;
+            }
+        }
 
         // Emergency stop if tilt angle exceeds safety limits  
         if (abs(input_angle) > EMERGENCY_STOP_ANGLE) {  
@@ -304,6 +352,7 @@ void updateControlMode() {
         case PID_ANGLE:
             // Angle-only control
             setpoint_angle = avgSpeedInput;  // Speed controller sets angle target
+
             break;
 
         case PID_POS:
@@ -635,6 +684,13 @@ void setupWebServer() {
             }
 
         }
+        if (request->hasParam("microStep")) {
+            uint16_t microStep = request->getParam("microStep")->value().toInt();
+            driver1.microsteps(microStep);
+            driver2.microsteps(microStep);
+            request->send(200, "text/plain", "Microstep set to " + String(microStep));
+            Serial.println("Microstep set to " + String(microStep));
+        }
         else {
             request->send(400, "text/plain", "Missing alphaSpeed parameter");
             Serial.println("Missing alphaSpeed parameter");
@@ -746,6 +802,7 @@ void sendWebSocketData() {
         wsData.data.motor_left_speed = filteredStepperLSpeed / MAX_SPEED_RPM * 100; //rpm
         wsData.data.motor_right_speed = filteredStepperRSpeed / MAX_SPEED_RPM * 100; //rpm
         wsData.data.robot_position = getRobotPos() * 100;
+        wsData.data.ultrasonic_distance = distance; //cm
 
         if (ws.connectedClients(0) > 0) {
             ws.sendBIN(0, wsData.bytes, sizeof(wsData.bytes));
