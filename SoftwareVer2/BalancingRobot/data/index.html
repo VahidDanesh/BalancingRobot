@@ -328,7 +328,13 @@
                 <label for="alphaSpeedInput">Alpha Speed:</label>
                 <input id="alphaSpeedInput" type="number" min="0" max="1" step="0.001" value="0.96">
                 <label for="tau">Tau:</label>
-                <input id="tau" type="number" min="0" max="5" step="0.001" value="0.5">
+                <input id="tau" type="number" min="0" max="5" step="0.001" value="0.5"> <br>
+                <label for="Angle PID f [Hz]">Angle PID f [Hz]:</label> 
+                <input id="Angle PID f [Hz]" type="number" min="0" max="500" step="10" value="200">
+                <label for="Pos PID f [Hz]">Pos PID f [Hz]:</label>
+                <input id="Pos PID f [Hz]" type="number" min="0" max="500" step="10" value="20">
+                <label for="Speed PID f [Hz]">Speed PID f [Hz]:</label>
+                <input id="Speed PID f [Hz]" type="number" min="0" max="500" step="10" value="20">
                 <button onclick="updateParameters()">Set Parameters</button>
                 
             </div>
@@ -364,6 +370,7 @@
             <button onclick="savePIDValues()">Save</button>
             <button class= "default-btn" onclick="resetPID()">Reset</button>
         </div>
+
 
 
         <!-- Mode Selection -->
@@ -536,12 +543,28 @@
                 return;
             }
 
-            fetch(`${ESP32_IP}/setParam?alphaSpeed=${alphaSpeed}&tau=${tau}`, {
+            const Angle_PID_f = parseFloat(document.getElementById('Angle PID f [Hz]').value);
+            if (isNaN(Angle_PID_f) || Angle_PID_f < 0 || Angle_PID_f > 500) {
+                alert("Please enter a valid Angle PID f value between 0 and 500.");
+                return;
+            }
+            const Pos_PID_f = parseFloat(document.getElementById('Pos PID f [Hz]').value);
+            if (isNaN(Pos_PID_f) || Pos_PID_f < 0 || Pos_PID_f > 500) {
+                alert("Please enter a valid Pos PID f value between 0 and 500.");
+                return;
+            }
+            const Speed_PID_f = parseFloat(document.getElementById('Speed PID f [Hz]').value);
+            if (isNaN(Speed_PID_f) || Speed_PID_f < 0 || Speed_PID_f > 500) {
+                alert("Please enter a valid Speed PID f value between 0 and 500.");
+                return;
+            }
+
+            fetch(`${ESP32_IP}/setParam?alphaSpeed=${alphaSpeed}&tau=${tau}&angleF=${Angle_PID_f}&posF=${Pos_PID_f}&speedF=${Speed_PID_f}`, {
                 method: 'GET',
             })
                 .then((response) => {
                     if (response.ok) {
-                        updateStatus(`Alpha Speed updated to: ${alphaSpeed}, Tau updated to: ${tau}`);
+                        updateStatus(`Alpha: ${alphaSpeed}, Tau: ${tau}, Angle PID f: ${Angle_PID_f}, Pos PID f: ${Pos_PID_f}, Speed PID f: ${Speed_PID_f}`);
                     } else {
                         updateStatus('Failed to update Alpha Speed and Tau.');
                     }

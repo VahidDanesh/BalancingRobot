@@ -19,9 +19,11 @@ unsigned long previousMillis = 0;
 const unsigned long interval = 1000;
 
 // PID tuning parameters  
-float Kp_angle = 10.0, Ki_angle = 0.1, Kd_angle = 0.5;  
+float Kp_angle = 10.0, Ki_angle = 0.1, Kd_angle = 0.5; 
 float Kp_pos = 20.0, Ki_pos = 0.5, Kd_pos = 0.1;  
 float Kp_speed = 20.0, Ki_speed = 0.8, Kd_speed = 0.2;  
+uint8_t angleF = 200, posF = 20, speedF = 20; 
+
 
 // PID variables  
 float input_angle = 0, output_angle = 0, setpoint_angle = 0;  
@@ -158,9 +160,9 @@ void setup() {
     pid_pos.SetOutputLimits(-MAX_TILT_ANGLE, MAX_TILT_ANGLE);  
     pid_speed.SetOutputLimits(-MAX_TILT_ANGLE, MAX_TILT_ANGLE);  
 
-    pid_angle.SetSampleTimeUs(5 * 1000);  // 200 Hz 
-    pid_pos.SetSampleTimeUs(20 * 1000);  // 50 Hz
-    pid_speed.SetSampleTimeUs(20 * 1000);  // 50 Hz
+    pid_angle.SetSampleTimeUs(angleF/1000 *  1000);  // 200 Hz 
+    pid_pos.SetSampleTimeUs(posF/1000 * 1000);  // 50 Hz
+    pid_speed.SetSampleTimeUs(speedF/1000 * 1000);  // 50 Hz
 
     // Setup WiFi and Web Server  
     setupWiFi();  
@@ -544,7 +546,21 @@ void setupWebServer() {
             tau = request->getParam("tau")->value().toFloat();
             request->send(200, "text/plain", "tau set to " + String(tau));
             Serial.println("tau set to " + String(tau));
-        } else {
+        } 
+        if (request->hasParam("angleF") || request->hasParam("posF") || request->hasParam("speedF")) {
+            angleF = request->getParam("angleF")->value().toFloat();
+            posF = request->getParam("posF")->value().toFloat();
+            speedF = request->getParam("speedF")->value().toFloat();
+            if (angleF != 200 || posF != 20 || speedF != 20) {
+                pid_angle.SetSampleTimeUs(1000 * 1000 / angleF);
+                pid_pos.SetSampleTimeUs(1000 * 1000 / posF);
+                pid_speed.SetSampleTimeUs(1000 * 1000 / speedF);
+                request->send(200, "text/plain", "Sample time set to angleF: " + String(angleF) + " posF: " + String(posF) + " speedF: " + String(speedF));
+                Serial.println("Sample time set to angleF: " + String(angleF) + " posF: " + String(posF) + " speedF: " + String(speedF));
+            }
+
+        }
+        else {
             request->send(400, "text/plain", "Missing alphaSpeed parameter");
             Serial.println("Missing alphaSpeed parameter");
         }
