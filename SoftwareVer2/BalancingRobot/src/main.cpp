@@ -30,18 +30,20 @@ float input_speed = 0, output_speed = 0, setpoint_speed = 0;
 
 float avgSpeedInput = 0, stepperLSpeed = 0, stepperRSpeed = 0, steer = 0;
 float filteredStepperLSpeed = 0, filteredStepperRSpeed = 0;
-float alphaSpeed = 0.9;
+float alphaSpeed = 0.96;
+float tau = 0.5, lastTau = 0.5;
 
 unsigned long lastWebSocketSend = 0;
 const unsigned long webSocketInterval = 100; // Send updates every 100ms (10Hz)
 
-bool calibrateToggle = false;
+bool calibrateToggle = true;
 
 union WebSocketData {
     struct {
         float time;
         float angle_setpoint;
         float angle_input;
+        float angle_error;
         float angle_output;
         float position_setpoint;
         float position_input;
@@ -67,11 +69,11 @@ QuickPID pid_angle(&input_angle, &output_angle, &setpoint_angle,
 
 QuickPID pid_pos(&input_pos, &output_pos, &setpoint_pos, 
                     Kp_pos, Ki_pos, Kd_pos, 
-                    pid_pos.Action::direct);
+                    pid_pos.Action::reverse);
 
 QuickPID pid_speed(&input_speed, &output_speed, &setpoint_speed,
                     Kp_speed, Ki_speed, Kd_speed,
-                    pid_speed.Action::direct);
+                    pid_speed.Action::reverse);
 
 
 
@@ -128,7 +130,7 @@ void setup() {
     stepperL->setAutoEnable(true);  
     stepperL->setSpeedInHz(1);  
     stepperL-> setCurrentPosition(0);
-    stepperL->setAcceleration(MAX_ACCELERATION);  
+    stepperL->setAcceleration(MAX_SPEED/tau);  
     Serial.println("Motor Initialized");
 
     stepperR = engine.stepperConnectToPin(MOTORR_STEP_PIN);
@@ -141,7 +143,7 @@ void setup() {
     stepperR->setAutoEnable(true);
     stepperR->setSpeedInHz(1);
     stepperR->setCurrentPosition(0);
-    stepperR->setAcceleration(MAX_ACCELERATION);
+    stepperR->setAcceleration(MAX_SPEED/tau);
     Serial.println("Motor Initialized");
 
 
@@ -157,8 +159,8 @@ void setup() {
     pid_speed.SetOutputLimits(-MAX_TILT_ANGLE, MAX_TILT_ANGLE);  
 
     pid_angle.SetSampleTimeUs(5 * 1000);  // 200 Hz 
-    pid_pos.SetSampleTimeUs(5 * 1000);  // 200 Hz
-    pid_speed.SetSampleTimeUs(5 * 1000);  // 200 Hz
+    pid_pos.SetSampleTimeUs(20 * 1000);  // 50 Hz
+    pid_speed.SetSampleTimeUs(20 * 1000);  // 50 Hz
 
     // Setup WiFi and Web Server  
     setupWiFi();  
@@ -194,6 +196,11 @@ void loop() {
     stepperL->setSpeedInHz(abs(rpm2sps(filteredStepperLSpeed)));
     stepperR->setSpeedInHz(abs(rpm2sps(filteredStepperRSpeed)));
 
+    if (lastTau != tau) {
+        stepperL->setAcceleration(MAX_SPEED/tau);
+        stepperR->setAcceleration(MAX_SPEED/tau);
+        lastTau = tau;
+    }
     if (stepperLSpeed > 0){
         stepperL->runForward();
     } else {
@@ -207,6 +214,7 @@ void loop() {
     
 
     sendWebSocketData();
+    pid_angle.Compute();
     // ArduinoOTA.handle(); // Handle OTA updates
     ws.loop(); // Handle WebSocket events
 
@@ -215,19 +223,6 @@ void loop() {
     unsigned long currentMillis = millis();
     if (currentMillis - previousMillis >= interval) {
         previousMillis = currentMillis;
-        // print pos, input and output
-        // Serial.print("Input Pos: ");
-        // Serial.print(getRobotPos());
-        // Serial.print(" Output Pos: ");
-        // Serial.print(output_pos);
-        // Serial.print(" Input Speed: ");
-        // Serial.print(input_speed);
-        // Serial.print(" Output Speed: ");
-        // Serial.print(output_speed);
-        // Serial.print(" Input angle: ");
-        // Serial.print(input_angle);
-        // Serial.print(" Output angle: ");
-        // Serial.println(output_angle);
 
         // Emergency stop if tilt angle exceeds safety limits  
         if (abs(input_angle) > EMERGENCY_STOP_ANGLE) {  
@@ -248,7 +243,6 @@ void updateControlMode() {
         case PID_ANGLE:
             // Angle-only control
             setpoint_angle = avgSpeedInput;  // Speed controller sets angle target
-            pid_angle.Compute();
             break;
 
         case PID_POS:
@@ -259,8 +253,7 @@ void updateControlMode() {
             
 
             pid_pos.Compute();
-            setpoint_angle = output_pos; // Position controller sets angle target, output position in m and angle in deg
-            pid_angle.Compute();
+            setpoint_angle = output_pos ; // Position controller sets angle target, output position in m and angle in deg
             break;
 
         case PID_SPEED:
@@ -268,7 +261,6 @@ void updateControlMode() {
             setpoint_speed = avgSpeedInput;  // Speed controller sets speed target
             pid_speed.Compute();
             setpoint_angle = output_speed;  // Speed controller sets angle target, output speed in m/s and angle in deg
-            pid_angle.Compute();
             break;
     }
 }
@@ -539,15 +531,22 @@ void setupWebServer() {
     });
 
     server.on("/setParam", HTTP_GET, [](AsyncWebServerRequest* request) {
-        if (request->hasParam("value")) {
-            String value = request->getParam("value")->value();
-            alphaSpeed = value.toFloat();
+        if (request->hasParam("alphaSpeed")) {
+            alphaSpeed = request->getParam("alphaSpeed")->value().toFloat();
+            // reset the robot position
             stepperL->setCurrentPosition(0);
             stepperR->setCurrentPosition(0);
-            Serial.printf("Pos updated to 0 and Alpha Speed updated to: %.4f\n", alphaSpeed);
-            request->send(200, "text/plain", "Alpha Speed updated successfully");
+            request->send(200, "text/plain", "alphaSpeed set to " + String(alphaSpeed));
+            Serial.println("Pos reset, alphaSpeed set to " + String(alphaSpeed));
+
+        }
+        if (request->hasParam("tau")){
+            tau = request->getParam("tau")->value().toFloat();
+            request->send(200, "text/plain", "tau set to " + String(tau));
+            Serial.println("tau set to " + String(tau));
         } else {
-            request->send(400, "text/plain", "Missing value parameter");
+            request->send(400, "text/plain", "Missing alphaSpeed parameter");
+            Serial.println("Missing alphaSpeed parameter");
         }
     });
 
@@ -561,6 +560,15 @@ void setupWebServer() {
         } else {
             request->send(400, "text/plain", "Missing toggle parameter");
         }
+    });
+
+    server.on("/resetPID", HTTP_GET, [](AsyncWebServerRequest* request) {
+        
+        pid_angle.Reset();
+        pid_pos.Reset();
+        pid_speed.Reset();
+        request->send(200, "text/plain", "PID controllers reset");
+        Serial.println("PID controllers reset");
     });
 
     
@@ -634,8 +642,9 @@ void sendWebSocketData() {
         lastWebSocketSend = currentMillis;
         static WebSocketData wsData;
         wsData.data.time = millis() / 1000.0f;
-        wsData.data.angle_setpoint = setpoint_angle / MAX_TILT_ANGLE * 100; //pid * deg; max = tilt angle
+        wsData.data.angle_setpoint = setpoint_angle; //pid * deg; max = tilt angle
         wsData.data.angle_input = input_angle;  //deg; max = 100 deg for plot
+        wsData.data.angle_error = setpoint_angle - input_angle;
         wsData.data.angle_output = output_angle / 4; //pid * deg
         wsData.data.position_setpoint = setpoint_pos * 100; //cm 
         wsData.data.position_input = input_pos * 100;

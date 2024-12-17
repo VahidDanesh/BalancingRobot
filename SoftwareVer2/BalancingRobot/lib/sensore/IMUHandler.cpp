@@ -80,22 +80,22 @@ void IMUHandler::calibrate(bool force) {
     delay(3150*2); // Give the user time to stabilize the sensor
 
     if (force) {
-    // Calibrate accelerometer and gyroscope
-    mpu.CalibrateAccel(6);
-    mpu.CalibrateGyro(6);
-    mpu.PrintActiveOffsets();
+        // Calibrate accelerometer and gyroscope
+        mpu.CalibrateAccel(6);
+        mpu.CalibrateGyro(6);
+        mpu.PrintActiveOffsets();
 
-    delay(3150);
+        delay(3150);
 
 
-    // Save offsets
+        // Save offsets
 
-    mpu.setXAccelOffset(mpu.getXAccelOffset());
-    mpu.setYAccelOffset(mpu.getYAccelOffset());
-    mpu.setZAccelOffset(mpu.getZAccelOffset());
-    mpu.setXGyroOffset(mpu.getXGyroOffset());
-    mpu.setYGyroOffset(mpu.getYGyroOffset());
-    mpu.setZGyroOffset(mpu.getZGyroOffset());
+        mpu.setXAccelOffset(mpu.getXAccelOffset());
+        mpu.setYAccelOffset(mpu.getYAccelOffset());
+        mpu.setZAccelOffset(mpu.getZAccelOffset());
+        mpu.setXGyroOffset(mpu.getXGyroOffset());
+        mpu.setYGyroOffset(mpu.getYGyroOffset());
+        mpu.setZGyroOffset(mpu.getZGyroOffset());
     } else {
         // use the calibration offset from PID calibration
         // see https://github.com/jrowberg/i2cdevlib/blob/master/Arduino/MPU6050/examples/IMU_Zero/IMU_Zero.ino

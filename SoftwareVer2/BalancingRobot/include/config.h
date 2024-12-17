@@ -16,6 +16,9 @@
 #define MOTORR_DIR_PIN 26
 #define MOTORR_ENABLE_PIN 14
 
+#define BUZZER_PIN 35
+
+
 // MPU6050 Pins
 #define MPU_SDA_PIN 21
 #define MPU_SCL_PIN 22
@@ -37,13 +40,17 @@
 // Neopixel LED
 #define NEOPIXEL_PIN 16
 
+
+#define WHEEL_RADIUS 0.0325f
+#define ROBOT_WIDTH 0.27f
+
 // Motor Configuration
-#define MICROSTEPS 32
+#define MICROSTEPS 8
 #define STEPS_PER_REV 200
-#define MAX_SPEED 25000  // steps/second
-#define MAX_SPEED_RPM 200 //rpm
-#define MAX_ACCELERATION MAX_SPEED*5  // steps/second^2
-#define MAX_SPEED_MPS 0.7f
+#define MAX_SPEED_MPS 1.0f
+#define MAX_SPEED MAX_SPEED_MPS/WHEEL_RADIUS * (1/TWO_PI) * (STEPS_PER_REV * MICROSTEPS)   // steps/second, equal to 1 m/s
+#define MAX_SPEED_RPM 300 //rpm
+
 
 
 
@@ -55,7 +62,7 @@
 #define WEB_SERVER_PORT 80
 
 // Safety limits  
-#define MAX_TILT_ANGLE 30.0f  
+#define MAX_TILT_ANGLE 60.0f  
 #define EMERGENCY_STOP_ANGLE 60.0f  
 
 // Control modes  
@@ -64,5 +71,3 @@
 #define PID_SPEED 2  
 
 
-#define WHEEL_RADIUS 0.0325f
-#define ROBOT_WIDTH 0.27f

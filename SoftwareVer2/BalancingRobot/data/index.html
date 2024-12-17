@@ -4,15 +4,15 @@
     <script>
         const CONFIG = {
             pid: {
-                Kp_angle: { min: 0, max: 20, step: 0.1, default: 10.0 },
-                Ki_angle: { min: 0, max: 2, step: 0.01, default: 0.1 },
-                Kd_angle: { min: 0, max: 2, step: 0.01, default: 0.5 },
-                Kp_pos: { min: 0, max: 20, step: 0.5, default: 20.0 },
-                Ki_pos: { min: 0, max: 10, step: 0.1, default: 0.5 },
-                Kd_pos: { min: 0, max: 10, step: 0.1, default: 0.1 },
-                Kp_speed: { min: 0, max: 50, step: 0.5, default: 40.0 },
-                Ki_speed: { min: 0, max: 25, step: 0.1, default: 0.8 },
-                Kd_speed: { min: 0, max: 10, step: 0.1, default: 0.2 },
+                Kp_angle: { min: 0, max: 20, step: 0.1, default: 8.3 },
+                Ki_angle: { min: 0, max: 2, step: 0.01, default: 0.0 },
+                Kd_angle: { min: 0, max: 2, step: 0.01, default: 0.06 },
+                Kp_pos: { min: 0, max: 200, step: 0.1, default: 20.0 },
+                Ki_pos: { min: 0, max: 100, step: 0.01, default: 0.5 },
+                Kd_pos: { min: 0, max: 100, step: 0.01, default: 0.1 },
+                Kp_speed: { min: 0, max: 200, step: 0.1, default: 40.0 },
+                Ki_speed: { min: 0, max: 100, step: 0.01, default: 0.8 },
+                Kd_speed: { min: 0, max: 100, step: 0.01, default: 0.2 },
             },
             modes: {
                 available: ['manual', 'auto', 'debug'],
@@ -325,9 +325,12 @@
                     <option value="speed">Speed</option>
                 </select>
 
-                <label for="alphaSpeedInput">Set Pos and Alpha Speed:</label>
-                <input id="alphaSpeedInput" type="number" min="0" max="1" step="0.001" value="0.9">
-                <button onclick="updateParameters()">Set Pos and Alpha Speed</button>
+                <label for="alphaSpeedInput">Alpha Speed:</label>
+                <input id="alphaSpeedInput" type="number" min="0" max="1" step="0.001" value="0.96">
+                <label for="tau">Tau:</label>
+                <input id="tau" type="number" min="0" max="5" step="0.001" value="0.5">
+                <button onclick="updateParameters()">Set Parameters</button>
+                
             </div>
 
             <div class="pid-controls">
@@ -359,6 +362,7 @@
                 </script>
             </div>
             <button onclick="savePIDValues()">Save</button>
+            <button class= "default-btn" onclick="resetPID()">Reset</button>
         </div>
 
 
@@ -400,23 +404,26 @@
                     updateStatus('Error sending command');
                 });
         }
-
+        let debounceTimeout;
         // Function to update PID value display and send to server
         function updatePIDValue(slider, valueId) {
-            const value = parseFloat(slider.value).toFixed(2);
+            const value = parseFloat(slider.value).toFixed(3);
             document.getElementById(valueId).textContent = value;
             
-        //     // Debounce the server update
-        //     clearTimeout(slider.timeout);
-        //     slider.timeout = setTimeout(() => {
-        //         updatePID();
-        //     }, 500);
-         }
+            // Clear the previous debounce timeout
+            clearTimeout(debounceTimeout);
+            const param = slider.id; // Example: "Kp_angle"
+            const pidType = param.split('_')[1]; // Extract "angle", "pos", or "speed"
+
+            // Set a new debounce timeout
+            debounceTimeout = setTimeout(() => {
+                savePIDValues(pidType); // Use the savePIDValues function to send updates
+            }, 500); // 500ms debounce time
+        }
 
 
 
-        function savePIDValues() {
-            const pidType = document.getElementById('controllerType').value;
+        function savePIDValues(pidType) {
             const pidValues = {
                 [`Kp_${pidType}`]: parseFloat(document.getElementById(`Kp_${pidType}`).value),
                 [`Ki_${pidType}`]: parseFloat(document.getElementById(`Ki_${pidType}`).value),
@@ -523,14 +530,20 @@
                 alert("Please enter a valid alpha speed value between 0 and 1.");
                 return;
             }
-            fetch(`${ESP32_IP}/setParam?value=${alphaSpeed}`, {
+            const tau = parseFloat(document.getElementById('tau').value);
+            if (isNaN(tau) || tau < 0 || tau > 5) {
+                alert("Please enter a valid tau value between 0 and 2.");
+                return;
+            }
+
+            fetch(`${ESP32_IP}/setParam?alphaSpeed=${alphaSpeed}&tau=${tau}`, {
                 method: 'GET',
             })
                 .then((response) => {
                     if (response.ok) {
-                        updateStatus(`Alpha Speed updated to: ${alphaSpeed}`);
+                        updateStatus(`Alpha Speed updated to: ${alphaSpeed}, Tau updated to: ${tau}`);
                     } else {
-                        updateStatus('Failed to update Alpha Speed.');
+                        updateStatus('Failed to update Alpha Speed and Tau.');
                     }
                 })
                 .catch((error) => {
@@ -547,6 +560,21 @@
                         updateStatus(`Calibration started.`);
                     } else {
                         updateStatus('Failed to start calibration.');
+                    }
+                })
+                .catch((error) => {
+                    updateStatus(`Error: ${error.message}`);
+                });
+        }
+        function resetPID() {
+            fetch(`${ESP32_IP}/resetPID`, {
+                method: 'GET',
+            })
+                .then((response) => {
+                    if (response.ok) {
+                        updateStatus(`PID terms reset.`);
+                    } else {
+                        updateStatus('Failed to reset PID values.');
                     }
                 })
                 .catch((error) => {

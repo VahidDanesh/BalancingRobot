@@ -18,6 +18,7 @@
         Signals to plot<br />
         <input type="checkbox" name="plotOption" id="angleSetpoint" onchange="updatePlotOptions()">PID Angle Setpoint<br />
         <input type="checkbox" name="plotOption" id="angleInput" onchange="updatePlotOptions()">PID Angle Input<br />
+        <input type="checkbox" name="plotOption" id="angleError" onchange="updatePlotOptions()">PID Angle Error<br />
         <input type="checkbox" name="plotOption" id="angleOutput" onchange="updatePlotOptions()">PID Angle Output<br />
         <input type="checkbox" name="plotOption" id="positionSetpoint" onchange="updatePlotOptions()">PID Position Setpoint<br />
         <input type="checkbox" name="plotOption" id="positionInput" onchange="updatePlotOptions()">PID Position Input<br />
@@ -43,7 +44,7 @@
         const ctx = canvas.getContext('2d');
         const ws = new WebSocket(`ws://${window.location.hostname}:81`); // const ws = new WebSocket(`ws://${ESP32_IP}:81`);
         ws.binaryType = 'arraybuffer';
-        const nSignals = 13; 
+        const nSignals = 14; 
         const colors = ["red", "blue", "green", "orange", "purple"];
         let dataBuffer = Array.from({ length: nSignals }, () => Array(500).fill(0));
         let logBuffer = Array.from({ length: nSignals }, () => []);
@@ -63,7 +64,7 @@
             if (plotting) {
                 const buffer = new DataView(event.data);
                 const signals = [];
-                for (let i = 0; i < 13; i++) {
+                for (let i = 0; i < nSignals; i++) {
                     signals.push(buffer.getFloat32(i * 4, true));
                 }
                 signals.forEach((value, index) => {
