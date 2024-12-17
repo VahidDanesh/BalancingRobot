@@ -9,6 +9,7 @@
 #include <WebSocketsServer.h>
 #include <SPIFFS.h>  
 #include <ArduinoOTA.h>
+#include <Adafruit_NeoPixel.h>
 #include "config.h"  
 #include "IMUHandler.h"  
 
@@ -19,7 +20,7 @@ unsigned long previousMillis = 0;
 const unsigned long interval = 1000;
 
 // PID tuning parameters  
-float Kp_angle = 10.0, Ki_angle = 0.1, Kd_angle = 0.5; 
+float Kp_angle = 8.5, Ki_angle = 0, Kd_angle = 0.05; 
 float Kp_pos = 20.0, Ki_pos = 0.5, Kd_pos = 0.1;  
 float Kp_speed = 20.0, Ki_speed = 0.8, Kd_speed = 0.2;  
 uint8_t angleF = 200, posF = 20, speedF = 20; 
@@ -34,9 +35,12 @@ float avgSpeedInput = 0, stepperLSpeed = 0, stepperRSpeed = 0, steer = 0;
 float filteredStepperLSpeed = 0, filteredStepperRSpeed = 0;
 float alphaSpeed = 0.96;
 float tau = 0.5, lastTau = 0.5;
+bool stepperDisabled = false;
 
 unsigned long lastWebSocketSend = 0;
 const unsigned long webSocketInterval = 100; // Send updates every 100ms (10Hz)
+
+Adafruit_NeoPixel neopixel = Adafruit_NeoPixel(1, NEOPIXEL_PIN);
 
 bool calibrateToggle = true;
 
@@ -71,11 +75,11 @@ QuickPID pid_angle(&input_angle, &output_angle, &setpoint_angle,
 
 QuickPID pid_pos(&input_pos, &output_pos, &setpoint_pos, 
                     Kp_pos, Ki_pos, Kd_pos, 
-                    pid_pos.Action::reverse);
+                    pid_pos.Action::direct);
 
 QuickPID pid_speed(&input_speed, &output_speed, &setpoint_speed,
                     Kp_speed, Ki_speed, Kd_speed,
-                    pid_speed.Action::reverse);
+                    pid_speed.Action::direct);
 
 
 
@@ -129,7 +133,7 @@ void setup() {
     }  
     stepperL->setDirectionPin(MOTORL_DIR_PIN);  
     stepperL->setEnablePin(MOTORL_ENABLE_PIN);  
-    stepperL->setAutoEnable(true);  
+    stepperL->enableOutputs();  
     stepperL->setSpeedInHz(1);  
     stepperL-> setCurrentPosition(0);
     stepperL->setAcceleration(MAX_SPEED/tau);  
@@ -142,7 +146,7 @@ void setup() {
     }
     stepperR->setDirectionPin(MOTORR_DIR_PIN);
     stepperR->setEnablePin(MOTORR_ENABLE_PIN);
-    stepperR->setAutoEnable(true);
+    stepperR->enableOutputs();
     stepperR->setSpeedInHz(1);
     stepperR->setCurrentPosition(0);
     stepperR->setAcceleration(MAX_SPEED/tau);
@@ -160,9 +164,17 @@ void setup() {
     pid_pos.SetOutputLimits(-MAX_TILT_ANGLE, MAX_TILT_ANGLE);  
     pid_speed.SetOutputLimits(-MAX_TILT_ANGLE, MAX_TILT_ANGLE);  
 
-    pid_angle.SetSampleTimeUs(angleF/1000 *  1000);  // 200 Hz 
-    pid_pos.SetSampleTimeUs(posF/1000 * 1000);  // 50 Hz
-    pid_speed.SetSampleTimeUs(speedF/1000 * 1000);  // 50 Hz
+    pid_angle.SetSampleTimeUs(1000/angleF *  1000);  // 200 Hz 
+    pid_pos.SetSampleTimeUs(1000/posF * 1000);  // 50 Hz
+    pid_speed.SetSampleTimeUs(1000/speedF * 1000);  // 50 Hz
+
+
+    // set neopixel pin green
+    neopixel.begin();
+    neopixel.setPixelColor(0, neopixel.Color(0, 255, 0));
+    neopixel.show();
+
+    
 
     // Setup WiFi and Web Server  
     setupWiFi();  
@@ -195,6 +207,7 @@ void loop() {
     if (near(steer, 0, 1)) {
         filteredStepperLSpeed = filteredStepperRSpeed;
     }
+
     stepperL->setSpeedInHz(abs(rpm2sps(filteredStepperLSpeed)));
     stepperR->setSpeedInHz(abs(rpm2sps(filteredStepperRSpeed)));
 
@@ -203,16 +216,14 @@ void loop() {
         stepperR->setAcceleration(MAX_SPEED/tau);
         lastTau = tau;
     }
-    if (stepperLSpeed > 0){
-        stepperL->runForward();
-    } else {
-        stepperL->runBackward();
-    }
-    if (stepperRSpeed > 0){
-        stepperR->runBackward();
-    } else {
-        stepperR->runForward();
-    }
+
+    if (stepperLSpeed == 0) stepperL->stopMove();
+    else if (stepperLSpeed > 0) stepperL->runForward();
+    else stepperL->runBackward();
+
+    if (stepperRSpeed == 0) stepperR->stopMove();
+    else if (stepperRSpeed > 0) stepperR->runForward();
+    else stepperR->runBackward();
     
 
     sendWebSocketData();
@@ -228,10 +239,34 @@ void loop() {
 
         // Emergency stop if tilt angle exceeds safety limits  
         if (abs(input_angle) > EMERGENCY_STOP_ANGLE) {  
-            stepperL->stopMove();
-            stepperR->stopMove();
-            Serial.println("Emergency Stop: Tilt angle exceeded safety limits!");  
-        }  
+            if (!stepperDisabled) {
+                stepperL->setDelayToDisable(50);
+                stepperR->setDelayToDisable(50);
+                stepperL->disableOutputs();
+                stepperR->disableOutputs();
+                stepperDisabled = true;
+
+                // neopixel red
+                neopixel.setPixelColor(0, neopixel.Color(255, 0, 0));
+                neopixel.show();
+                Serial.println("Emergency Stop: Tilt angle exceeded safety limits!");  
+        }}
+
+        if (stepperDisabled && abs(input_angle) < EMERGENCY_STOP_ANGLE) {  
+            stepperL->setDelayToEnable(500);
+            stepperR->setDelayToEnable(500);
+
+            stepperL->enableOutputs();
+            stepperR->enableOutputs();
+
+            stepperDisabled = false;
+
+            // neopixel green
+            neopixel.setPixelColor(0, neopixel.Color(0, 255, 0));
+            neopixel.show();
+            Serial.println("Emergency Stop: Resumed operation");  
+        }
+
         if (WiFi.status() != WL_CONNECTED) {
             Serial.print("Reconnecting to WiFi...");
             setupWiFi();
@@ -508,6 +543,12 @@ void setupWebServer() {
             if (mode == "angle") {
                 controlMode = PID_ANGLE;
                 pid_angle.Reset();
+
+
+                // neopixel blue
+                neopixel.setPixelColor(0, neopixel.Color(0, 0, 100));
+                neopixel.show();
+
                 request->send(200, "text/plain", "Mode set to Angle");
                 Serial.println("Mode set to Angle");
             } else if (mode == "pos") {
@@ -515,11 +556,21 @@ void setupWebServer() {
                 stepperR->setCurrentPosition(0);
                 controlMode = PID_POS;
                 pid_pos.Reset();
+                // magenta
+                neopixel.setPixelColor(0, neopixel.Color(100, 0, 100));
+                neopixel.show();
+
+
                 request->send(200, "text/plain", "Mode set to Position");
                 Serial.println("Mode set to Position");
             } else if (mode == "speed") {
                 controlMode = PID_SPEED;
                 pid_speed.Reset();
+
+                //yellow
+                neopixel.setPixelColor(0, neopixel.Color(100, 100, 0));
+                neopixel.show();
+
                 request->send(200, "text/plain", "Mode set to Speed");
                 Serial.println("Mode set to Speed");
             } else {
