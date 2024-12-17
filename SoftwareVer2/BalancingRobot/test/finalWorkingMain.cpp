@@ -7,7 +7,6 @@
 #include <ESPAsyncWebServer.h>  
 #include <AsyncTCP.h>  
 #include <WebSocketsServer.h>
-#include <TMCStepper.h>
 #include <SPIFFS.h>  
 #include <ArduinoOTA.h>
 #include <Adafruit_NeoPixel.h>
@@ -15,12 +14,6 @@
 #include "IMUHandler.h"  
 
 
-
-#define DRIVER1_ADDRESS 0b00   // Address for Motor Driver 1
-#define DRIVER2_ADDRESS 0b01   // Address for Motor Driver 2
-
-#define SERIAL_PORT Serial1    // Hardware UART for TMC2209 communication
-#define R_SENSE 0.11f 
 
 uint8_t controlMode = PID_ANGLE; // Default to angle+position control  
 unsigned long previousMillis = 0;
@@ -89,9 +82,7 @@ QuickPID pid_speed(&input_speed, &output_speed, &setpoint_speed,
                     pid_speed.Action::direct);
 
 
-// TMC2209 Instances
-TMC2209Stepper driver1 = TMC2209Stepper(&SERIAL_PORT, R_SENSE, DRIVER1_ADDRESS);
-TMC2209Stepper driver2 = TMC2209Stepper(&SERIAL_PORT, R_SENSE, DRIVER2_ADDRESS);
+
 // Stepper instances  
 FastAccelStepperEngine engine;  
 FastAccelStepper* stepperL = nullptr;  
@@ -119,22 +110,7 @@ void updateControlMode();
 void setupOTA();
 
 void setup() {  
-    Serial.begin(SERIAL_BAUD); 
-    SERIAL_PORT.begin(115200); // UART speed for TMC2209 communication
-
-    // Driver 1 Initialization
-    driver1.begin();
-    driver1.toff(4);  // Enable SpreadCycle
-    driver1.rms_current(1200); // Motor current in mA
-    driver1.microsteps(8);
-    driver1.en_spreadCycle(true);
-
-    // Driver 2 Initialization
-    driver2.begin();
-    driver2.toff(4);  // Enable SpreadCycle
-    driver2.rms_current(1200);
-    driver2.microsteps(8);
-    driver2.en_spreadCycle(true); 
+    Serial.begin(SERIAL_BAUD);  
 
     // Initialize SPIFFS  
     if (!SPIFFS.begin(true)) {  
@@ -216,6 +192,7 @@ void loop() {
     // Update IMU data  
     imu.update();  
     input_angle = imu.getRoll() * RAD_TO_DEG;
+    if (abs(input_angle) < 1) input_angle = 0;
     input_speed = getRobotSpeed();
 
 
