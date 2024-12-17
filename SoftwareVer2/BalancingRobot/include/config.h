@@ -45,7 +45,7 @@
 #define ROBOT_WIDTH 0.27f
 
 // Motor Configuration
-#define MICROSTEPS 8
+#define MICROSTEPS 16
 #define STEPS_PER_REV 200
 #define MAX_SPEED_MPS 1.0f
 #define MAX_SPEED MAX_SPEED_MPS/WHEEL_RADIUS * (1/TWO_PI) * (STEPS_PER_REV * MICROSTEPS)   // steps/second, equal to 1 m/s
