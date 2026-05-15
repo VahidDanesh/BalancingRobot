@@ -111,7 +111,7 @@ def save_fig(fig, name, pdf=True, png=True):
     if pdf:
         path = os.path.join(PLOT_DIR, name + '.pdf')
         fig.savefig(path)
-        print(f"  Saved: {path}")
+        # print(f"  Saved: {path}")
     if png:
         path_png = os.path.join(PLOT_DIR, name + '.png')
         fig.savefig(path_png, dpi=150)

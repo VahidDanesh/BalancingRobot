@@ -20,7 +20,7 @@ import numpy as np
 from scipy.integrate import solve_ivp
 
 from parameters import M, m, L, I, b, g
-from plot_utils import new_fig, save_fig, finalize, C_PLANT, C_CTRL, PALETTE
+from plot_utils import C_REF, new_fig, save_fig, finalize, C_PLANT, C_CTRL, PALETTE
 
 
 # ============================================================================
@@ -237,7 +237,7 @@ def plot_saturation(t_unsat, xp_unsat, u_unsat,
 
     # Position
     ax_x.plot(t_unsat, xp_unsat[0], color=C_PLANT,  lw=1.8, label='Unsaturated')
-    ax_x.plot(t_sat,   xp_sat[0],   color=C_CTRL, lw=1.8, ls='--', label='Saturated')
+    ax_x.plot(t_sat,   xp_sat[0],   color=C_REF, lw=1.8, ls='--', label='Saturated')
     ax_x.axhline(0, color='k', lw=0.6, ls=':')
     ax_x.set_ylabel(r'Position $x$ (m)')
     ax_x.legend()
@@ -245,14 +245,14 @@ def plot_saturation(t_unsat, xp_unsat, u_unsat,
 
     # Tilt
     ax_th.plot(t_unsat, np.degrees(xp_unsat[1]), color=C_PLANT,  lw=1.8, label='Unsaturated')
-    ax_th.plot(t_sat,   np.degrees(xp_sat[1]),   color=C_CTRL, lw=1.8, ls='--', label='Saturated')
+    ax_th.plot(t_sat,   np.degrees(xp_sat[1]),   color=C_REF, lw=1.8, ls='--', label='Saturated')
     ax_th.axhline(0, color='k', lw=0.6, ls=':')
     ax_th.set_ylabel(r'Tilt angle $\theta$ (°)')
     ax_th.legend()
 
     # Control
     ax_u.plot(t_unsat, u_unsat, color=C_PLANT,  lw=1.8, label='Unsaturated $u$')
-    ax_u.plot(t_sat,   u_sat,   color=C_CTRL, lw=1.8, ls='--', label='Saturated $u$')
+    ax_u.plot(t_sat,   u_sat,   color=C_REF, lw=1.8, ls='--', label='Saturated $u$')
     ax_u.axhline( u_max, color='gray', lw=1.0, ls=':', label=f'±{u_max:.0f} N limit')
     ax_u.axhline(-u_max, color='gray', lw=1.0, ls=':')
     ax_u.set_ylabel(r'Control input $u$ (N)')
