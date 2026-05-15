@@ -31,7 +31,7 @@ This project applies linear systems theory to a two-wheeled self-balancing robot
 │   ├── animate.py        # Interactive real-time animation
 │   └── plots/            # Saved figures (PDF + PNG)
 ├── doc/
-│   └── MEC_560_Final_Project_Report_.pdf
+│   └── MEC_560_Final_Project_Report.pdf
 │       
 └── README.md
 ```
@@ -81,6 +81,7 @@ jupyter notebook code/main.ipynb
 
 A live readout displays position, tilt angle, and applied forces. A tilt gauge turns red when `|θ| > 20°`.
 
+![Demo](doc/demo.gif)
 ---
 
 ## Results Summary
