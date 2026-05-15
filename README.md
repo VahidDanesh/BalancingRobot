@@ -3,7 +3,7 @@
 **Course:** MEC 560 — Advanced Control Systems, Spring 2026  
 **Instructor:** Dr. Amin Fakhari, Stony Brook University  
 **Author:** Vahid Danesh  
-**Report:** [`Project_Report.pdf`](doc/MEC_560_Final_Project_Report_.pdf)
+**Report:** [`Project_Report.pdf`](doc/MEC_560_Final_Project_Report.pdf)
 
 ---
 
