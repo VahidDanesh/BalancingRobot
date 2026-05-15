@@ -3,7 +3,7 @@
 **Course:** MEC 560 — Advanced Control Systems, Spring 2026  
 **Instructor:** Dr. Amin Fakhari, Stony Brook University  
 **Author:** Vahid Danesh  
-**Report:** [`doc/MEC_560_Final_Project/Main.pdf`](doc/MEC_560_Final_Project/Main.pdf)
+**Report:** [`Project_Report.pdf`](doc/MEC_560_Final_Project_Report_.pdf)
 
 ---
 
@@ -31,8 +31,8 @@ This project applies linear systems theory to a two-wheeled self-balancing robot
 │   ├── animate.py        # Interactive real-time animation
 │   └── plots/            # Saved figures (PDF + PNG)
 ├── doc/
-│   └── MEC_560_Final_Project/
-│       └── Main.tex      # IEEE-format project report
+│   └── MEC_560_Final_Project_Report_.pdf
+│       
 └── README.md
 ```
 
