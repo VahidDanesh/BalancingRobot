@@ -1,0 +1,25 @@
+# Generated figures
+code/plots/
+
+# Doc folder — exclude everything except the compiled report PDF
+refs/
+figs/
+doc/MEC_560_Final_Project
+!doc/MEC_560_Final_Project.pdf
+
+# Project guide and internal docs
+MEC560_Project_Guide.md
+CLAUDE.md
+.cursorrules
+references.md
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db
+*.ini
