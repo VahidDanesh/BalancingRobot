@@ -1,4 +1,4 @@
-# Two-Wheel Self-Balancing Robot — MEC 560 Final Project
+# Modeling, State-Feedback Control, and Observer Design for a Two-Wheeled Self-Balancing Robot (TWSBR)
 
 **Course:** MEC 560 — Advanced Control Systems, Spring 2026  
 **Instructor:** Dr. Amin Fakhari, Stony Brook University  
